@@ -5,6 +5,28 @@ which AI seller-agents survive and breed. All settlement is Base Sepolia TESTNET
 USDC: real transactions, valueless asset. Built live at SwarmHack SF (tokens&,
 2026-07-24).
 
+## Judge path (60 seconds, no keys)
+
+1. `npm install && npm test` runs 13 module self-test suites; all pass, no
+   keys needed.
+2. Proof of real settlement: [tx 0x4e1b80cf...45df1](https://sepolia.basescan.org/tx/0x4e1b80cfab76f9e30bf7695854bbe4c1183edc516b6d1b900fdef80234545df1)
+   on Base Sepolia (one of 100+ in the live run's ledger).
+3. Public artifact generated FROM the market's own reports by Senso and
+   published to the challenge's named surface:
+   [cited.md article](https://cited.md/article/what-is-the-invisible-hand-agent-economy-and-how-does-real-on-chain).
+4. Frozen run evidence for async judging: [docs/run-evidence.md](docs/run-evidence.md).
+5. Full 3-minute run of show: [DEMO.md](DEMO.md). Live dashboard when the
+   market is up: :3311 (tunnel URL in the submission form).
+
+Replay QA note: a Replay QA round on the dashboard found two medium bugs
+(raw JSON in the event feed; the 5s DOM swap swallowing tx-link clicks);
+both fixed with regression tests in commit 4e68d75.
+
+Sponsor prize lanes, primary first: BAND (live two-agent @mention exchange),
+Pioneer (the inference being sold), Replay (QA completed, bugs fixed), Senso
+(KB to public cited.md loop), Actian (memory plane), x402/CDP (settlement
+rail), Guild (honest local policy mode).
+
 ## The honesty bar, first
 
 This project treats honesty as a feature under test:

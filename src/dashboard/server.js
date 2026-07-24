@@ -317,6 +317,7 @@ export function buildModel(inputs = {}) {
     const row = genMap.get(g);
     row.total += 1;
     if (v.status === 'LIVE') row.alive += 1;
+    row.requests = (row.requests || 0) + (v.sales || 0);
     if (v.p100 !== null && v.p100 !== undefined) row.p100s.push(v.p100);
     if (v.accuracy !== null && v.accuracy !== undefined) row.accs.push(v.accuracy);
     if (v.price_usd !== null && v.price_usd !== undefined) row.prices.push(v.price_usd);
@@ -327,6 +328,7 @@ export function buildModel(inputs = {}) {
     gen: r.gen,
     total: r.total,
     alive: r.alive,
+    requests: r.requests || 0,
     meanP100: mean(r.p100s),
     meanAccuracy: mean(r.accs),
     priceMin: r.prices.length ? Math.min(...r.prices) : null,
@@ -587,7 +589,7 @@ export function renderPage(model) {
   <div class="tiles">
     <div class="tile"><div class="big">${m.genMax}</div><div class="label">Generation</div></div>
     <div class="tile"><div class="big pos">${m.live}</div><div class="label">Live variants</div></div>
-    <div class="tile"><div class="big ${m.dead > 0 ? 'neg' : ''}">${m.dead}</div><div class="label">Bankrupt</div></div>
+    <div class="tile"><div class="big ${m.dead > 0 ? 'neg' : ''}">${m.dead}</div><div class="label">Delisted</div></div>
     <div class="tile"><div class="big">${m.txTotal}</div><div class="label">On-chain settlements</div></div>
     <div class="tile"><div class="big ${deltaClass(m.totalPnl)}">${esc(fmtUsd(m.totalPnl, 3))}</div><div class="label">Market net P&amp;L</div></div>
     <div class="tile"><div class="big">${esc(fmtUsd(m.totalVolume, 3))}</div><div class="label">Sales volume</div></div>
@@ -611,16 +613,17 @@ export function renderPage(model) {
       <div class="panel" style="margin-bottom:16px">
         <h2>Evolution by generation <span class="muted">(raw counts, no smoothing)</span></h2>
         <table>
-          <thead><tr><th>Gen</th><th class="center">Alive/Total</th><th>Mean P/100</th><th class="center">Mean acc</th><th>Price range</th><th>Niches</th></tr></thead>
+          <thead><tr><th>Gen</th><th class="center">Alive/Total</th><th class="center">Sales n</th><th>Mean P/100</th><th class="center">Mean acc</th><th>Price range</th><th>Niches</th></tr></thead>
           <tbody>
           ${(m.generations || []).map((g) => `<tr>
             <td class="mono center">${g.gen}</td>
             <td class="mono center">${g.alive}/${g.total}</td>
+            <td class="mono center">${g.requests}</td>
             <td class="mono ${deltaClass(g.meanP100)}">${g.meanP100 === null ? '<span class="muted">n/a</span>' : esc(fmtUsd(g.meanP100, 3))}</td>
             <td class="mono center">${g.meanAccuracy === null ? '<span class="muted">n/a</span>' : (g.meanAccuracy * 100).toFixed(0) + '%'}</td>
             <td class="mono small">${g.priceMin === null ? '<span class="muted">n/a</span>' : esc(fmtUsd(g.priceMin)) + ' to ' + esc(fmtUsd(g.priceMax))}</td>
             <td class="small">${esc(g.niches || '')}</td>
-          </tr>`).join('\n') || '<tr><td colspan="6" class="muted">no generations yet</td></tr>'}
+          </tr>`).join('\n') || '<tr><td colspan="7" class="muted">no generations yet</td></tr>'}
           </tbody>
         </table>
       </div>
