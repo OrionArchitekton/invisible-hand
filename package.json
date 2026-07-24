@@ -1,0 +1,19 @@
+{
+  "name": "invisible-hand",
+  "version": "1.0.0",
+  "description": "An agent economy where selection is enforced by real money: seller-agent variants evolve under on-chain market pressure",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "express": "^5.2.1",
+    "viem": "^2.55.8",
+    "x402-express": "^1.2.0",
+    "x402-fetch": "^1.2.0"
+  }
+}
