@@ -308,6 +308,32 @@ export function buildModel(inputs = {}) {
   }
   feed.sort((x, y) => y.ts - x.ts);
 
+  // Per-generation aggregates (raw counts, no smoothing): does selection
+  // actually improve the population across generations?
+  const genMap = new Map();
+  for (const v of variants) {
+    const g = v.gen || 0;
+    if (!genMap.has(g)) genMap.set(g, { gen: g, total: 0, alive: 0, p100s: [], accs: [], prices: [], niches: new Map() });
+    const row = genMap.get(g);
+    row.total += 1;
+    if (v.status === 'LIVE') row.alive += 1;
+    if (v.p100 !== null && v.p100 !== undefined) row.p100s.push(v.p100);
+    if (v.accuracy !== null && v.accuracy !== undefined) row.accs.push(v.accuracy);
+    if (v.price_usd !== null && v.price_usd !== undefined) row.prices.push(v.price_usd);
+    if (v.niche) row.niches.set(v.niche, (row.niches.get(v.niche) || 0) + 1);
+  }
+  const mean = (xs) => (xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : null);
+  const generations = [...genMap.values()].sort((a, b) => a.gen - b.gen).map((r) => ({
+    gen: r.gen,
+    total: r.total,
+    alive: r.alive,
+    meanP100: mean(r.p100s),
+    meanAccuracy: mean(r.accs),
+    priceMin: r.prices.length ? Math.min(...r.prices) : null,
+    priceMax: r.prices.length ? Math.max(...r.prices) : null,
+    niches: [...r.niches.entries()].sort((a, b) => b[1] - a[1]).map(([n, c]) => `${n} x${c}`).join(', '),
+  }));
+
   const genMax = variants.reduce((m, v) => Math.max(m, v.gen || 0), 0);
   const live = variants.filter((v) => v.status === 'LIVE').length;
   const dead = variants.length - live;
@@ -326,6 +352,7 @@ export function buildModel(inputs = {}) {
     txTotal,
     treasury,
     variants,
+    generations,
     feed: feed.slice(0, 30),
     counts: { ledger: entries.length, mesh: mesh.length, failures: failures.length },
   };
@@ -549,6 +576,22 @@ export function renderPage(model) {
     </div>
     <div>
       <div class="panel" style="margin-bottom:16px">
+        <h2>Evolution by generation <span class="muted">(raw counts, no smoothing)</span></h2>
+        <table>
+          <thead><tr><th>Gen</th><th class="center">Alive/Total</th><th>Mean P/100</th><th class="center">Mean acc</th><th>Price range</th><th>Niches</th></tr></thead>
+          <tbody>
+          ${(m.generations || []).map((g) => `<tr>
+            <td class="mono center">${g.gen}</td>
+            <td class="mono center">${g.alive}/${g.total}</td>
+            <td class="mono ${deltaClass(g.meanP100)}">${g.meanP100 === null ? '<span class="muted">n/a</span>' : esc(fmtUsd(g.meanP100, 3))}</td>
+            <td class="mono center">${g.meanAccuracy === null ? '<span class="muted">n/a</span>' : (g.meanAccuracy * 100).toFixed(0) + '%'}</td>
+            <td class="mono small">${g.priceMin === null ? '<span class="muted">n/a</span>' : esc(fmtUsd(g.priceMin)) + ' to ' + esc(fmtUsd(g.priceMax))}</td>
+            <td class="small">${esc(g.niches || '')}</td>
+          </tr>`).join('\n') || '<tr><td colspan="6" class="muted">no generations yet</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+      <div class="panel" style="margin-bottom:16px">
         <h2>Lineage</h2>
         ${lineageHtml(m.variants)}
       </div>
@@ -710,6 +753,9 @@ if (process.env.SELF_TEST) {
     ['XSS model string escaped in html', !hostileHtml.includes('<script>x</script>') && hostileHtml.includes('&lt;script&gt;')],
     ['parent cycle both variants still rendered', hostileHtml.includes('v-cyc-a') && hostileHtml.includes('v-cyc-b')],
     ['hostile render has no long dashes', !/[\u2013\u2014\u2015]/.test(hostileHtml)],
+    ['generations aggregated', model.generations.length === 2 && model.generations[0].gen === 2 && model.generations[1].gen === 3],
+    ['generation alive counts', model.generations[0].alive === 1 && model.generations[1].alive === 0],
+    ['evolution panel rendered', html.includes('Evolution by generation')],
   ];
   let failed = 0;
   for (const [name, ok] of checks) {
