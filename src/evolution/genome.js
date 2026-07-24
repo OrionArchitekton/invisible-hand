@@ -17,11 +17,14 @@ export const PRICE_MAX = 0.02;
 // "Decoder Models - Serverless Inference" on 2026-07-24) plus the Pioneer router.
 // openai/gpt-oss-20b and Qwen/Qwen3-8B are the cheap open models in the pool.
 export const MODEL_POOL = [
-  "Pioneer/Auto",
+  // Live-verified servable on Pioneer 07-24 (HTTP 200 on chat/completions).
+  // "Pioneer/Auto" 404s: the router id is case-sensitive lowercase.
+  "pioneer/auto",
   "openai/gpt-oss-20b",
+  "openai/gpt-oss-120b",
   "Qwen/Qwen3-8B",
-  "meta-llama/Llama-3.3-70B-Instruct",
-  "deepseek-ai/DeepSeek-V3.1",
+  "zai-org/GLM-5.2",
+  "meta-llama/Llama-3.1-8B-Instruct",
 ];
 
 export const NICHE_POOL = ["ai", "crypto", "security", "science", "business", "general"];
