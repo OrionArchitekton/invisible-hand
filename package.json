@@ -1,10 +1,10 @@
 {
   "name": "invisible-hand",
   "version": "1.0.0",
-  "description": "An agent economy where selection is enforced by real money: seller-agent variants evolve under on-chain market pressure",
+  "description": "An agent economy where selection is enforced by real on-chain settlement (Base Sepolia testnet USDC): seller-agent variants evolve under live market pressure",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node scripts/test-all.js"
   },
   "keywords": [],
   "author": "",

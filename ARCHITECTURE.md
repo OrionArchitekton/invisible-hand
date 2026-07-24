@@ -1,13 +1,15 @@
 # Invisible Hand: architecture contract (SwarmHack 2026-07-24)
 
-An agent economy where natural selection is enforced by real money. A population of
+An agent economy where natural selection is enforced by real on-chain settlement
+(Base Sepolia TESTNET USDC: real transactions, valueless asset). A population of
 seller-agent variants sells structured extraction over live web content behind x402
-paywalls (Base Sepolia USDC). Profit is the fitness function. Insolvent variants are
+paywalls. Profit is the fitness function. Insolvent variants are
 delisted (their endpoint literally 410s). Survivors breed; children inherit; lineage,
 estates, and failure clusters persist in Actian VectorAI. Guild policy gates every
 mutation. Gemini verifies output and operates mutation. BAND is the coordination mesh
 (discovery, @mention buy orders, replayable audit). Pioneer serves the inference being
-sold and its cost side (model-route gene, `Pioneer/Auto` savings story).
+sold and its cost side (model-route gene: per-call cost estimates from the Pioneer
+price table feed each variant's P&L, so cheaper routes win on unit economics).
 
 HONESTY BARS (non-negotiable, judged): self-play demand is DISCLOSED (buyers are
 adversarial verifiers, not praise bots); testnet USDC is called testnet; nothing is
@@ -28,7 +30,7 @@ src/market/wallets.js     viem local accounts per variant + buyer treasury;
                           (private keys ONLY in data/keys.json, gitignored)
 src/market/ledger.js      JSONL ledger data/ledger.jsonl: credit/debit(id, usd, reason,
                           tx_hash?); pnl(id); rolling profit-per-100-requests
-src/buyers/fleet.js       buyer loop: pull live tasks (HN/RSS articles), pick seller
+src/buyers/fleet.js       buyer loop: pull live tasks (HN front-page articles), pick seller
                           (BAND discovery order + quality-weighted), pay via x402-fetch,
                           verify, log receipt, re-purchase policy by verified quality
 src/buyers/verify.js      schema check + Gemini URL-context cross-check ->
@@ -38,9 +40,9 @@ src/evolution/genome.js   {id, parent_ids[], gen, price_usd, model, prompt_varia
 src/evolution/engine.js   cadence loop: compute fitness (ledger pnl); bankruptcy when
                           bankroll exhausted -> delist + estate to Actian; breed top-2 ->
                           child (Guild-gated) -> fresh wallet + stake -> register + announce
-src/memory/actian.js      gRPC localhost:6574; collections: genomes, estates, failures
-                          (embeddings: all-MiniLM via @xenova/transformers or hash-embed
-                          fallback; keep it working > fancy)
+src/memory/actian.js      REST localhost:6573; collections: genomes, estates, failures
+                          (embeddings: deterministic hash-embed; no MiniLM path shipped;
+                          keep it working > fancy)
 src/mesh/band.js          BAND room client (docs.band.ai): announce(variant),
                           buyOrder(task), emit(event). NO key -> local mode: append to
                           data/mesh.jsonl and log; NEVER pretend to be live
@@ -77,12 +79,19 @@ GEMINI_API_KEY (exists) · PIONEER_API_KEY · BAND_API_KEY · GUILD_API_KEY (pen
 TREASURY_PRIVATE_KEY (generated locally, data/keys.json)
 
 ## Demo arc (3:00, two panes: dashboard + basescan explorer; BAND room third if live)
-0:00 market at generation N, running for hours. 0:30 judge picks a live article; buy
-order fires; 402 challenge + settlement on-chain. 1:15 weak seller returns junk;
-verification rejects; re-purchases stop; balance crosses cost line. 1:45 bankruptcy:
-delist fires, curl 410 on stage; estate written; parents breed; child lands first paid
-request. 2:30 close: profit-per-100 curve up across generations, verified accuracy up,
-unit cost down, one governance block trace, explorer left open.
+Every beat below is fired through a REAL seam (POST /demo/* on the local state port
+runs the actual market/engine paths); operator-triggered beats are narrated as such.
+0:00 market at generation N, running for hours; tiles show real settlements + P&L.
+0:30 judge picks a live article; operator fires POST /demo/buy {url}; a real x402
+402 challenge + on-chain settlement lands; tx hash opens in basescan. 1:15 point at
+the event feed: verification rejections and inference-cost debits are already there
+from the live run (verifier rejects unsupported claims; bad sellers stop earning
+re-purchases). 1:45 operator-triggered stress test, said out loud as exactly that:
+POST /demo/stress-insolvency/:id debits the weakest variant past its stake; the REAL
+insolvency path fires: delist, curl the endpoint 410 GONE on stage, estate written
+to Actian; on the next breed tick the survivors breed and the child registers.
+2:30 close: population table (fitness, verified accuracy, per-variant P&L curves),
+one governance block trace in the feed, explorer left open on the settlement tx.
 
 ## VERIFIED integration facts (live-probed 07-24 ~11:30; code against THESE)
 

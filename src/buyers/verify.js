@@ -1,7 +1,7 @@
 // src/buyers/verify.js
 // Adversarial verification of seller output. Buyers are verifiers, not praise bots.
 // Contract (ARCHITECTURE.md): schema = {claims:[{text, source_url, confidence}]};
-// Gemini cross-check (model gemini-3.1-flash, url_context tool when available,
+// Gemini cross-check (model gemini-flash-latest, url_context tool when available,
 // else fetch the page text ourselves) -> {verified, reasons[]}.
 // Claim-level failures also append to data/failures.jsonl for Actian clustering.
 //
@@ -16,7 +16,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.resolve(__dirname, "../../data");
 const FAILURES_PATH = path.join(DATA_DIR, "failures.jsonl");
 
-// gemini-3.1-flash 404s on v1beta generateContent (verified 2026-07-24);
+// gemini-3.1-flash (stale alias) 404s on v1beta generateContent (verified 2026-07-24);
 // gemini-flash-latest is the live stable-flash alias from ListModels.
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-flash-latest";
 const GEMINI_URL = (model) =>

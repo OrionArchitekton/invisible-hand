@@ -34,7 +34,7 @@ import { createEngine } from '../src/evolution/engine.js';
 import { getActian } from '../src/memory/actian.js';
 import * as band from '../src/mesh/band.js';
 import * as guild from '../src/governance/guild.js';
-import { startFleet } from '../src/buyers/fleet.js';
+import { startFleet, runCycle } from '../src/buyers/fleet.js';
 import { start as startDashboard } from '../src/dashboard/server.js';
 import { publishMarketReport, isSensoLive } from '../src/publish/senso.js';
 
@@ -185,6 +185,52 @@ async function main() {
       }
     },
   });
+
+  // 8b) Demo-control seams (LOCAL state app only, never tunneled). These are
+  //     honest operator triggers wired to the REAL market paths, so the 3-min
+  //     demo's beats fire on cue instead of riding the stochastic cadence:
+  //     - POST /demo/buy {url?}: run one real paid buy cycle now; a provided
+  //       url becomes the task (the "judge picks an article" beat, for real).
+  //     - POST /demo/stress-insolvency/:id: operator-triggered stress test;
+  //       debits the variant's ledger past its stake (reason says exactly
+  //       that), then runs the real evalTick -> insolvency -> delist(410) ->
+  //       estate path. Never narrated as a spontaneous bankruptcy.
+  stateApp.use(express.json());
+  stateApp.post('/demo/buy', async (req, res) => {
+    try {
+      const url = req.body && typeof req.body.url === 'string' && req.body.url.startsWith('http')
+        ? req.body.url : null;
+      const receipt = await runCycle({
+        registry: fleetRegistry,
+        account: getTreasuryAccount(),
+        tracker: fleet.tracker,
+        ...(url ? { task: { url, title: 'judge-picked article' } } : {}),
+      });
+      res.json({ ok: !receipt?.skipped, receipt });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: String(err.message || err).slice(0, 300) });
+    }
+  });
+  stateApp.post('/demo/stress-insolvency/:id', async (req, res) => {
+    try {
+      const id = String(req.params.id);
+      const row = engine.state().population.find((r) => r.id === id);
+      if (!row) { res.status(404).json({ ok: false, error: `no variant ${id}` }); return; }
+      if (!row.alive) { res.status(409).json({ ok: false, error: `${id} already delisted` }); return; }
+      const debit = Math.max(0, row.bankroll) + 0.001;
+      ledgerMod.debit(id, debit, 'demo_stress_test:operator_triggered_insolvency');
+      const after = await engine.evalTick();
+      const outRow = after.population.find((r) => r.id === id);
+      res.json({
+        ok: outRow ? !outRow.alive : false,
+        variant: outRow,
+        note: 'operator-triggered stress test: ledger debited past stake, then the real insolvency -> delist(410) -> estate path ran',
+      });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: String(err.message || err).slice(0, 300) });
+    }
+  });
+  console.log(`[run-market] demo seams armed on :${STATE_PORT} (POST /demo/buy, POST /demo/stress-insolvency/:id)`);
 
   // 9) Senso publish cadence: per-generation market report into the org KB
   //    (live when SENSO_API_KEY present; labeled local mode otherwise).
