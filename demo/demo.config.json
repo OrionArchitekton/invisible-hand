@@ -1,7 +1,7 @@
 {
-  "script": "./DEMO_SCRIPT.md",
+  "script": "/home/orion/src/orion-estate/personal-brand/hackathons/invisible-hand/demo/DEMO_SCRIPT.md",
   "dashboardBaseUrl": "http://localhost:3311",
-  "out": "out",
+  "out": "/home/orion/src/orion-estate/personal-brand/hackathons/invisible-hand/demo/out",
   "resolution": { "width": 1920, "height": 1080 },
   "fps": 30,
   "motion": {

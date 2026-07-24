@@ -214,15 +214,9 @@ export function createEngine(deps = {}, opts = {}) {
     if (breeding) return { bred: false, reason: "breed already in progress" };
     breeding = true;
     try {
-      let alive = [...pop.entries()].filter(([, r]) => r.alive);
+      const alive = [...pop.entries()].filter(([, r]) => r.alive);
       if (alive.length < 2) return { bred: false, reason: "need 2 living parents" };
-      // At cap, evolution does not stall: the lowest-fitness living variant is
-      // displaced (market-selected exit) to make room for the child.
-      if (alive.length >= cfg.maxPopulation) {
-        const weakest = [...alive].sort((a, b) => a[1].fitness - b[1].fitness)[0];
-        await marketExit(weakest[0], weakest[1]);
-        alive = [...pop.entries()].filter(([, r]) => r.alive);
-      }
+      const atCap = alive.length >= cfg.maxPopulation;
       const ranked = alive.sort((a, b) => b[1].fitness - a[1].fitness);
       const [aId, aRec] = ranked[0];
       const [bId, bRec] = ranked[1];
@@ -250,6 +244,15 @@ export function createEngine(deps = {}, opts = {}) {
         await emit({ type: "governance_block", variant_id: child.id, parent_ids: child.parent_ids, trace: verdict?.trace || ["gate returned no verdict"] });
         console.log(`[engine] guild BLOCKED child ${child.id}: ${JSON.stringify(verdict?.trace || [])}`);
         return { bred: false, reason: "guild blocked", child, trace: verdict?.trace };
+      }
+
+      // At cap, displacement happens ONLY after the child is bred AND gate
+      // approved: a governance block must leave the population unchanged (an
+      // earlier version delisted the weakest first, so a blocked child SHRANK
+      // the population while the event claimed displacement by offspring).
+      if (atCap) {
+        const weakest = [...alive].sort((a, b) => a[1].fitness - b[1].fitness)[0];
+        await marketExit(weakest[0], weakest[1]);
       }
 
       await addVariant(child, { isChild: true });
@@ -402,5 +405,22 @@ if (process.env.SELF_TEST) {
   assert(calls3.emits.includes("market_exit"), "market_exit event emitted");
   const st3 = engine3.state();
   assert(st3.alive === 3 && st3.dead === 1, "population back at cap after displacement + child");
+
+  // Regression: a guild BLOCK at cap must leave the population unchanged
+  // (breed-then-displace order; an earlier version killed the weakest first).
+  const calls4 = { delist: [] };
+  const engine4 = createEngine({
+    ...deps,
+    registry: { register: () => {}, delist: (id, reason) => calls4.delist.push({ id, reason }) },
+    ledger: { pnl: (id) => 0.01, requestCount: () => 5 },
+    guild: { gateMutation: () => ({ approved: false, trace: ["spend_cap: blocked for test"] }) },
+  }, { forceLocalBreed: true, minParentRequests: 0, bankrollUsd: 0.25, maxPopulation: 3 });
+  await engine4.seed(seedPopulation().slice(0, 3));
+  await engine4.evalTick();
+  const res4 = await engine4.breedTick();
+  assert(res4.bred === false && res4.reason === "guild blocked", "cap breed blocked by gate");
+  assert(calls4.delist.length === 0, "governance block at cap delists NOTHING");
+  const st4 = engine4.state();
+  assert(st4.alive === 3 && st4.dead === 0, "population unchanged after blocked cap breed");
   console.log("engine.js SELF_TEST OK:", { generation: st.generation, alive: st.alive, dead: st.dead, child: res.child.id, clusters: res.failureClusters, restored: { alive: restored.alive, generation: restored.generation } });
 }

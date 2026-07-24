@@ -56,6 +56,12 @@ function appendJsonl(file, obj) {
   fs.appendFileSync(file, JSON.stringify(obj) + '\n');
 }
 
+// Price fragment for human-facing room messages: empty when the price is
+// missing, so a real sponsor demo never reads "at $undefined".
+function priceClause(prefix, v) {
+  return Number.isFinite(Number(v)) ? `${prefix}$${Number(v)}` : '';
+}
+
 function summarize(event) {
   const bits = [event.type];
   if (event.variant_id) bits.push(event.variant_id);
@@ -297,7 +303,7 @@ export async function emit(event) {
         try {
           await bandRequest('POST', `/api/v1/agent/chats/${chatId}/messages`, {
             message: {
-              content: `@${buyer.handle} settlement: ${record.variant_id} sold extraction for $${record.price_usd}${record.tx_hash ? ` (tx ${record.tx_hash})` : ''}`,
+              content: `@${buyer.handle} settlement: ${record.variant_id} sold extraction${priceClause(' for ', record.price_usd)}${record.tx_hash ? ` (tx ${record.tx_hash})` : ''}`,
               mentions: [{ id: buyer.id, handle: buyer.handle }],
             },
           }, { agentName: 'ih-market' });
@@ -370,7 +376,7 @@ export async function buyOrder(task) {
     try {
       await bandRequest('POST', `/api/v1/agent/chats/${chatId}/messages`, {
         message: {
-          content: `@${herald.handle} buy order: extract ${record.url || 'task'} from ${record.seller_id || 'a seller'} at $${record.price_usd}`,
+          content: `@${herald.handle} buy order: extract ${record.url || 'task'} from ${record.seller_id || 'a seller'}${priceClause(' at ', record.price_usd)}`,
           mentions: [{ id: herald.id, handle: herald.handle }],
         },
       }, { agentName: 'ih-buyer' });
@@ -413,7 +419,16 @@ if (process.env.SELF_TEST) {
   if (JSON.stringify(types) !== JSON.stringify(expected)) {
     throw new Error(`SELF_TEST FAIL: types ${types.join(',')}`);
   }
-  console.log('SELF_TEST OK band.js (local mode, 5 events ->', meshFile(), ')');
+  // Regression (live BAND messages read "at $undefined" when price was absent):
+  // the price clause must vanish, not stringify undefined.
+  const noPriceOrder = await buyOrder({ id: 't-2', url: 'https://example.com/b', seller_id: 'v-test-1' });
+  if (JSON.stringify(noPriceOrder).includes('undefined') || priceClause(' at ', noPriceOrder.price_usd) !== '') {
+    throw new Error('SELF_TEST FAIL: missing price leaked into message content');
+  }
+  if (priceClause(' at ', 0.0086) !== ' at $0.0086') {
+    throw new Error('SELF_TEST FAIL: priceClause formats a real price');
+  }
+  console.log('SELF_TEST OK band.js (local mode, 6 events ->', meshFile(), ')');
 }
 
 function countLines(file) {

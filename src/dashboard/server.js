@@ -255,9 +255,14 @@ export function buildModel(inputs = {}) {
     // Ledger-derived P&L when the ledger has entries for this variant; else
     // fall back to the engine's own reported pnl (survives a ledger reset).
     v.pnl = a.entries.length ? (a.balance - a.stakeTotal) : (v.statePnl ?? 0);
-    if (v.bankroll_usd === null) {
-      v.bankroll_usd = a.entries.length ? a.balance
-        : (v.statePnl !== null && v.stake_usd !== null ? v.stake_usd + v.statePnl : null);
+    // Ledger truth OVERRIDES a state-reported bankroll: after a snapshot
+    // restore the engine re-stakes dead variants at face value and its
+    // evalTick skips them, so /state can report a full green bankroll on a
+    // BANKRUPT row (judge-visible contradiction). balance = stake + pnl.
+    if (a.entries.length) {
+      v.bankroll_usd = a.balance;
+    } else if (v.bankroll_usd === null) {
+      v.bankroll_usd = v.statePnl !== null && v.stake_usd !== null ? v.stake_usd + v.statePnl : null;
     }
     v.stake = v.stake_usd ?? (a.stakeTotal > 0 ? a.stakeTotal : stakeDefault);
     v.sales = a.sales;
@@ -319,6 +324,13 @@ export function buildModel(inputs = {}) {
     if (v.status === 'LIVE') row.alive += 1;
     row.requests = (row.requests || 0) + (v.sales || 0);
     if (v.p100 !== null && v.p100 !== undefined) row.p100s.push(v.p100);
+    // Weighted accuracy: successes over attempts across the generation, not an
+    // unweighted mean of per-agent ratios (a 2-sale agent must not count as
+    // much as a 100-sale agent).
+    if (v.accuracy !== null && v.accuracy !== undefined && (v.sales || 0) > 0) {
+      row.accOk = (row.accOk || 0) + v.accuracy * v.sales;
+      row.accN = (row.accN || 0) + v.sales;
+    }
     if (v.accuracy !== null && v.accuracy !== undefined) row.accs.push(v.accuracy);
     if (v.price_usd !== null && v.price_usd !== undefined) row.prices.push(v.price_usd);
     if (v.niche) row.niches.set(v.niche, (row.niches.get(v.niche) || 0) + 1);
@@ -330,7 +342,9 @@ export function buildModel(inputs = {}) {
     alive: r.alive,
     requests: r.requests || 0,
     meanP100: mean(r.p100s),
-    meanAccuracy: mean(r.accs),
+    meanAccuracy: r.accN ? (r.accOk / r.accN) : mean(r.accs),
+    accuracyOk: r.accN ? Math.round(r.accOk) : null,
+    accuracyN: r.accN || null,
     priceMin: r.prices.length ? Math.min(...r.prices) : null,
     priceMax: r.prices.length ? Math.max(...r.prices) : null,
     niches: [...r.niches.entries()].sort((a, b) => b[1] - a[1]).map(([n, c]) => `${n} x${c}`).join(', '),
@@ -474,7 +488,7 @@ function lineageHtml(variants) {
   return body ? `<ul class="tree">${body}</ul>` : '<p class="muted">no lineage yet</p>';
 }
 
-export function renderPage(model) {
+export function renderPage(model, { staticPage = false } = {}) {
   const m = model;
   const rows = m.variants.map((v) => {
     // A displaced (market-selected exit) variant is dead but SOLVENT: label it
@@ -596,7 +610,7 @@ export function renderPage(model) {
   </div>
 
   <div class="grid">
-    <div class="panel">
+    <div class="panel" id="population-panel">
       <h2>Population</h2>
       <table>
         <thead><tr>
@@ -610,7 +624,7 @@ export function renderPage(model) {
       </table>
     </div>
     <div>
-      <div class="panel" style="margin-bottom:16px">
+      <div class="panel" id="evolution-panel" style="margin-bottom:16px">
         <h2>Evolution by generation <span class="muted">(raw counts, no smoothing)</span></h2>
         <table>
           <thead><tr><th>Gen</th><th class="center">Alive/Total</th><th class="center">Sales n</th><th>Mean P/100</th><th class="center">Mean acc</th><th>Price range</th><th>Niches</th></tr></thead>
@@ -620,18 +634,18 @@ export function renderPage(model) {
             <td class="mono center">${g.alive}/${g.total}</td>
             <td class="mono center">${g.requests}</td>
             <td class="mono ${deltaClass(g.meanP100)}">${g.meanP100 === null ? '<span class="muted">n/a</span>' : esc(fmtUsd(g.meanP100, 3))}</td>
-            <td class="mono center">${g.meanAccuracy === null ? '<span class="muted">n/a</span>' : (g.meanAccuracy * 100).toFixed(0) + '%'}</td>
+            <td class="mono center">${g.meanAccuracy === null ? '<span class="muted">n/a</span>' : (g.meanAccuracy * 100).toFixed(0) + '%' + (g.accuracyN ? ` <span class="muted small">${g.accuracyOk}/${g.accuracyN}</span>` : '')}</td>
             <td class="mono small">${g.priceMin === null ? '<span class="muted">n/a</span>' : esc(fmtUsd(g.priceMin)) + ' to ' + esc(fmtUsd(g.priceMax))}</td>
             <td class="small">${esc(g.niches || '')}</td>
           </tr>`).join('\n') || '<tr><td colspan="7" class="muted">no generations yet</td></tr>'}
           </tbody>
         </table>
       </div>
-      <div class="panel" style="margin-bottom:16px">
+      <div class="panel" id="lineage-panel" style="margin-bottom:16px">
         <h2>Lineage</h2>
         ${lineageHtml(m.variants)}
       </div>
-      <div class="panel">
+      <div class="panel" id="feed-panel">
         <h2>Event feed <span class="muted">(mesh ${m.counts.mesh} · ledger ${m.counts.ledger} · failures ${m.counts.failures})</span></h2>
         <div class="feed">
         ${feedRows || '<p class="muted">no events yet</p>'}
@@ -647,7 +661,7 @@ export function renderPage(model) {
     ${m.stateLive ? '' : 'Registry state endpoint offline; rendering from data files only.'}
   </footer>
 </div>
-<script>
+${staticPage ? '' : `<script>
 // Replay QA finding: replacing #app mid-click destroyed a tx anchor before
 // its target=_blank navigation fired. Defer the swap while the user is
 // interacting (recent pointer activity or an active text selection).
@@ -675,7 +689,7 @@ setInterval(async () => {
     }
   } catch (e) { /* offline blip, keep last render */ }
 }, 5000);
-</script>
+</script>`}
 </body>
 </html>`;
 }
@@ -699,10 +713,13 @@ export function createApp(opts = {}) {
     });
   }
 
-  app.get('/', async (_req, res) => {
+  app.get('/', async (req, res) => {
     try {
       const model = await collect();
-      res.set('Cache-Control', 'no-store').type('html').send(renderPage(model));
+      // ?static=1 omits the 5s poll script: used by the demo-video pipeline,
+      // whose locator retries race the DOM swap and time out.
+      const staticPage = String(req.query.static || '') === '1';
+      res.set('Cache-Control', 'no-store').type('html').send(renderPage(model, { staticPage }));
     } catch (err) {
       res.status(500).type('text/plain').send('dashboard render error: ' + String(err?.message || err));
     }
@@ -772,8 +789,13 @@ if (process.env.SELF_TEST) {
       { id: 'v-dead', gen: 0, model: 'q', price_usd: 0.02, alive: false, pnl: -0.3 },
       { id: 'v-cyc-a', gen: 2, model: 'm', price_usd: 0.01, alive: true, parent_ids: ['v-cyc-b'] },
       { id: 'v-cyc-b', gen: 2, model: 'm', price_usd: 0.01, alive: true, parent_ids: ['v-cyc-a'] },
+      // Regression P0-1: restored dead variant whose /state bankroll was
+      // re-staked at face value while the ledger says it is underwater.
+      { id: 'v-stale-bankroll', gen: 0, model: 'm', price_usd: 0.01, alive: false, bankroll: 0.25, stake_usd: 0.25, delist_reason: 'insolvent: bankroll exhausted' },
     ] },
-    ledger: [null, { id: 'v-unmatched', type: 'credit', usd: 0.01 }, 'not-an-object'],
+    ledger: [null, { id: 'v-unmatched', type: 'credit', usd: 0.01 }, 'not-an-object',
+      { id: 'v-stale-bankroll', type: 'credit', usd: 0.25, reason: 'stake' },
+      { id: 'v-stale-bankroll', type: 'debit', usd: 0.2708, reason: 'inference cost' }],
     mesh: [null, { type: 'announce', variant: 'v-restored' }],
     failures: [null], receipts: [null],
   });
@@ -792,7 +814,8 @@ if (process.env.SELF_TEST) {
     ['html has testnet honesty label', html.includes('TESTNET')],
     ['no long dashes', !/[\u2013\u2014\u2015]/.test(html)],
     ['empty inputs do not crash', renderPage(buildModel({})).includes('no variants yet')],
-    ['null state row dropped, not crashed', hostile.variants.length === 4],
+    ['null state row dropped, not crashed', hostile.variants.length === 5],
+    ['ledger truth overrides stale restored bankroll', Math.abs(hostile.variants.find((v) => v.id === 'v-stale-bankroll').bankroll_usd - (-0.0208)) < 1e-9],
     ['restored variant pnl from engine (no ledger)', hostile.variants.find((v) => v.id === 'v-restored')?.pnl === 0.07],
     ['alive:false maps to bankrupt', hostile.variants.find((v) => v.id === 'v-dead')?.status === 'BANKRUPT'],
     ['XSS model string escaped in html', !hostileHtml.includes('<script>x</script>') && hostileHtml.includes('&lt;script&gt;')],

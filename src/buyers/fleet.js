@@ -240,7 +240,7 @@ export async function runCycle(opts = {}) {
   const seller = pickSeller(live, tracker);
   const vid = variantId(seller);
   const task = opts.task || (await fetchTasks(1))[0];
-  emit({ type: "buy_order", variant_id: vid, task_url: task.url, title: task.title });
+  emit({ type: "buy_order", variant_id: vid, task_url: task.url, title: task.title, price: variantPrice(seller) });
 
   const fetchWithPay = wrapFetchWithPayment(fetch, account, MAX_PAY_USDC);
   const receipt = {

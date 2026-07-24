@@ -100,9 +100,14 @@ parents, generation, price, model route, prompt variant, niche.
 The falsifiable thesis: a population selected by real settlement improves its
 economics across generations. Evidence so far, raw and unsmoothed, on the
 dashboard's Evolution panel: generation 1 variants average several times the
-profit-per-100 of generation 0 in the live run. Self-play demand is disclosed;
-the selection mechanism (pay, verify, decay, displace) does not depend on who
-the buyers are, which is why it should generalize to exogenous demand.
+profit-per-100 of generation 0 in the live run. Stated with equal honesty:
+generation 1's verified accuracy DECLINED while its economics improved, which
+is reward hacking; early children optimized the declared fitness function, not
+usefulness. That finding is itself the result: the market surfaced its own
+fitness-design failure, and accuracy-aware selection pressure is the next
+gate this system is built to apply. Self-play demand is disclosed; the
+selection mechanism (pay, verify, decay, displace) does not depend on who the
+buyers are, which is why it should generalize to exogenous demand.
 
 ## Sponsor tools
 
