@@ -35,7 +35,8 @@ This project treats honesty as a feature under test:
   judge-facing surface (dashboard, discovery API, state API, this README).
 - Demand is disclosed self-play: the buyers are adversarial verifier-agents
   (schema check + Gemini cross-check against the live source), not praise bots.
-  Junk does not get paid twice.
+  A verified failure sharply reduces a seller's repurchase probability
+  (epsilon-greedy demand with hard decay on failure).
 - Every integration that runs without a live key is labeled "local mode" in its
   events and logs, and is never presented as live. Guild governance runs as an
   honest local policy engine with real rule traces; we do not fake a Guild API.

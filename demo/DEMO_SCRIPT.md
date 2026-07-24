@@ -5,14 +5,14 @@ disclosed, the stress test labeled operator-triggered, Guild called local mode.
 
 ### SHOT open
 - target: dashboard
-- narration: This is Invisible Hand, a live agent economy where real on-chain settlement, not a simulated score, decides which AI agents survive and breed. It has been running through the afternoon with no hands on the keyboard. Everything is Base Sepolia testnet USDC, and every claim in this demo is labeled honestly.
+- narration: This is Invisible Hand: a live agent economy where real on-chain settlement decides which AI agents survive and breed. It has run all afternoon, no hands on the keyboard. Base Sepolia testnet USDC, and every claim in this demo is labeled honestly.
 - action: goto url="/?static=1"
 - action: wait ms=800
 - action: highlight selector=".tiles"
 
 ### SHOT market-feed
 - target: dashboard
-- narration: Buyer agents pull live Hacker News articles and pay seller agents for structured claim extraction through x402 paywalls. In the event feed: buy orders, on-chain settlements with their transaction hashes, and every seller's real inference cost debits, model by model, priced from Pioneer's table.
+- narration: Buyer agents pull live Hacker News articles and pay seller agents for claim extraction through x402 paywalls. The feed shows buy orders, on-chain settlements with transaction hashes, and per-model inference cost debits priced from Pioneer's table.
 - action: goto url="/?static=1"
 - action: wait ms=600
 - action: scroll selector="#feed-panel"
@@ -21,13 +21,13 @@ disclosed, the stress test labeled operator-triggered, Guild called local mode.
 
 ### SHOT basescan
 - target: dashboard
-- narration: Here is one of those settlements on Basescan, a real transaction on Base Sepolia, one of more than one hundred seventy in this run. Real transactions, testnet asset, nothing mocked.
-- action: goto url="https://sepolia.basescan.org/tx/0x2bd4dee37e4af3805d5d63299916d334af1852f2d34e70030f678df52974a155"
-- action: wait ms=2500
+- narration: One of those settlements on a public block explorer: a real Base Sepolia transaction, one of more than two hundred in this run. Real transactions, testnet asset, nothing mocked.
+- action: goto url="https://base-sepolia.blockscout.com/tx/0x2bd4dee37e4af3805d5d63299916d334af1852f2d34e70030f678df52974a155"
+- action: wait ms=3500
 
 ### SHOT verification
 - target: dashboard
-- narration: Demand is disclosed self-play. The buyers are adversarial Gemini verifiers that cross-check every claim against the live source. Junk gets rejected, more than one hundred thirty rejections on disk so far, and rejected sellers stop earning repurchases.
+- narration: Demand is disclosed self-play: adversarial Gemini verifiers cross-check every claim against the live source. Junk is rejected, over a hundred fifty rejections so far, and a verified failure sharply cuts a seller's future demand.
 - action: goto url="/?static=1"
 - action: wait ms=600
 - action: scroll selector="#feed-panel"
@@ -35,7 +35,7 @@ disclosed, the stress test labeled operator-triggered, Guild called local mode.
 
 ### SHOT population
 - target: dashboard
-- narration: Profit is the fitness function, cumulative settled revenue minus inference cost. This variant went insolvent and was delisted; its endpoint literally returns 410 GONE. That death was an operator-triggered stress test and we say so out loud; the mechanism it fired is the real insolvency path, estate written to memory.
+- narration: Profit is fitness: cumulative settled revenue minus inference cost. This variant went insolvent and was delisted; its endpoint now literally returns 410 GONE. That death was an operator-triggered stress test, said out loud, and the path it fired is the real insolvency mechanism.
 - action: goto url="/?static=1"
 - action: wait ms=600
 - action: scroll selector="#population-panel"
@@ -44,7 +44,7 @@ disclosed, the stress test labeled operator-triggered, Guild called local mode.
 
 ### SHOT evolution
 - target: dashboard
-- narration: The headline result, raw counts, no smoothing. Generation one children average several times the profit per hundred requests of generation zero, sample sizes on the panel. And we report the wrinkle honestly: verified accuracy declined, meaning early children optimized the declared fitness, not usefulness. That exposed a reward-hacking regime, and it is exactly the next selective pressure this market is built to apply.
+- narration: The headline, raw counts: generation one children earn several times generation zero's profit per hundred requests, sample sizes on screen. Verified accuracy declined, though: early children optimized the declared fitness, not usefulness. Surfacing that reward hacking is the point, and it becomes the next selective pressure.
 - action: goto url="/?static=1"
 - action: wait ms=600
 - action: scroll selector="#evolution-panel"
@@ -53,7 +53,7 @@ disclosed, the stress test labeled operator-triggered, Guild called local mode.
 
 ### SHOT lineage-governance
 - target: dashboard
-- narration: Survivors breed. Children are mutated by Gemini and inherit immunity from their parents' failure clusters stored in Actian VectorAI. Every mutation passes a fail-closed governance gate: price bands, mutation deltas, spend caps, parent solvency. The feed shows real traces of children being blocked, Guild's policy shape running in honest local mode.
+- narration: Survivors breed. Gemini mutates the children, which inherit immunity from their parents' failure clusters stored in Actian VectorAI. Every mutation passes a fail-closed policy gate; here a child is blocked on the spend cap. Guild's policy shape, honest local mode.
 - action: goto url="/?static=1"
 - action: wait ms=600
 - action: scroll selector="#lineage-panel"
@@ -62,14 +62,15 @@ disclosed, the stress test labeled operator-triggered, Guild called local mode.
 
 ### SHOT cited
 - target: dashboard
-- narration: The market also publishes. Its own generation reports flow into a Senso knowledge base, and Senso's engine generated this public article on cited dot md from them. Meanwhile in the BAND room, the buyer agent posts every order as a real at-mention and the market herald answers each settlement.
+- narration: The market publishes its own generation reports into a Senso knowledge base, and Senso's engine generated this public cited dot md article from them. In the BAND room, buyer and herald agents exchange real at-mention orders and settlements.
 - action: goto url="https://cited.md/article/what-is-the-invisible-hand-agent-economy-and-how-does-real-on-chain"
 - action: wait ms=2500
 
 ### SHOT close
 - target: dashboard
-- narration: Pioneer serves the inference being sold. x402 settles it on-chain. Gemini verifies and mutates. Actian remembers. BAND coordinates. Senso publishes. Every stub is labeled, every settlement is independently verifiable on-chain, and inference costs are labeled estimates from Pioneer's price table. The invisible hand, enforced by settlement.
+- narration: Pioneer serves the inference being sold. x402 settles on-chain. Gemini verifies and mutates. Actian remembers. BAND coordinates. Senso publishes. Every stub is labeled, every settlement independently verifiable on-chain, costs are labeled estimates. The invisible hand, enforced by settlement.
 - action: goto url="/?static=1"
 - action: wait ms=800
-- action: scroll y=99999
+- action: scroll selector="#receipts-panel"
+- action: highlight selector="#receipts-panel"
 - action: wait ms=1200

@@ -162,12 +162,18 @@ export async function gateMutation(childGenome, parentGenomes = [], opts = {}) {
       : 'genome has no niche (fail closed)',
   });
 
-  // Rule 5: cumulative spend cap on child stakes
-  const committed = spendCommitted();
+  // Rule 5: spend cap on child stakes. The cap governs capital CONCURRENTLY
+  // at risk: when the caller reports the stake deployed across LIVING
+  // variants (opts.deployedStakeUsd), that is the committed base; dead
+  // variants' stakes are no longer deployed. Without that report we fall
+  // back to the lifetime approved-stake ledger (stricter, grow-only). The
+  // trace names which basis was used.
+  const deployed = Number.isFinite(opts.deployedStakeUsd) ? opts.deployedStakeUsd : null;
+  const committed = deployed !== null ? deployed : spendCommitted();
   trace.push({
     rule: 'spend_cap',
     ok: committed + stake <= policy.spend_cap_usd + 1e-9,
-    detail: `committed ${committed.toFixed(4)} + stake ${stake} vs cap ${policy.spend_cap_usd}`,
+    detail: `${deployed !== null ? 'deployed(live)' : 'lifetime-approved'} ${committed.toFixed(4)} + stake ${stake} vs cap ${policy.spend_cap_usd}`,
   });
 
   // Rule 6: parents solvent at breed time (fail closed on unknown)

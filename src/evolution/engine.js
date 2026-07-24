@@ -195,13 +195,15 @@ export function createEngine(deps = {}, opts = {}) {
   // Evaluate fitness + solvency for every living variant.
   async function evalTick() {
     for (const [id, rec] of pop) {
-      if (!rec.alive) continue;
       try {
+        // Dead variants get their economics recomputed too (a restored dead
+        // record otherwise reports its re-staked face value forever); only
+        // the insolvency transition is alive-only.
         rec.pnl = num(fnPnl ? await fnPnl(id) : 0, 0);
         rec.fitness = num(await fitnessOf(id), 0);
         rec.requests = num(fnReqs ? await fnReqs(id) : rec.requests, rec.requests);
         rec.bankroll = rec.stake_usd + rec.pnl;
-        if (rec.bankroll <= 0) await insolvency(id, rec);
+        if (rec.alive && rec.bankroll <= 0) await insolvency(id, rec);
       } catch (err) {
         console.warn(`[engine] evalTick(${id}) failed: ${err.message}`);
       }
@@ -237,8 +239,12 @@ export function createEngine(deps = {}, opts = {}) {
         { ...aRec.genome, bankroll_usd: aRec.bankroll },
         { ...bRec.genome, bankroll_usd: bRec.bankroll },
       ];
+      // The spend cap governs capital concurrently at risk: report the stake
+      // deployed across LIVING variants so the gate does not count returned
+      // stakes of dead variants (a lifetime counter stalls evolution forever).
+      const deployedStakeUsd = alive.reduce((s, [, r]) => s + (Number(r.stake_usd) || cfg.bankrollUsd), 0);
       const verdict = gateFn
-        ? await safe("guild.gateMutation", gateFn, child, parentGenomes, { stakeUsd: cfg.bankrollUsd })
+        ? await safe("guild.gateMutation", gateFn, child, parentGenomes, { stakeUsd: cfg.bankrollUsd, deployedStakeUsd })
         : { approved: true, trace: ["no guild seam wired; ungated (integrator TODO)"] };
       if (!verdict || !verdict.approved) {
         await emit({ type: "governance_block", variant_id: child.id, parent_ids: child.parent_ids, trace: verdict?.trace || ["gate returned no verdict"] });
@@ -251,7 +257,12 @@ export function createEngine(deps = {}, opts = {}) {
       // earlier version delisted the weakest first, so a blocked child SHRANK
       // the population while the event claimed displacement by offspring).
       if (atCap) {
-        const weakest = [...alive].sort((a, b) => a[1].fitness - b[1].fitness)[0];
+        // Newborns get a minimum evaluation window: variants with fewer than
+        // minParentRequests sales are not displacement candidates unless
+        // every living variant is that young.
+        const evaluated = alive.filter(([, r]) => (r.requests || 0) >= cfg.minParentRequests);
+        const pool = evaluated.length ? evaluated : alive;
+        const weakest = [...pool].sort((a, b) => a[1].fitness - b[1].fitness)[0];
         await marketExit(weakest[0], weakest[1]);
       }
 

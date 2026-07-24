@@ -19,6 +19,13 @@ const DEFAULT_PORT = Number(process.env.DASHBOARD_PORT || 3311);
 const DEFAULT_STATE_URL =
   process.env.MARKET_STATE_URL || process.env.STATE_URL || 'http://127.0.0.1:3313/state';
 const DEFAULT_STAKE = Number(process.env.BANKROLL_USD || 0.25);
+
+// Deployed commit for the footer (reproducibility); resolved once at boot.
+let DEPLOYED_SHA = 'unknown';
+try {
+  const { execSync } = await import('node:child_process');
+  DEPLOYED_SHA = execSync('git rev-parse --short HEAD', { cwd: HERE, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+} catch { /* not a git checkout */ }
 const EXPLORER = 'https://sepolia.basescan.org/address/';
 const TX_EXPLORER = 'https://sepolia.basescan.org/tx/';
 
@@ -276,9 +283,13 @@ export function buildModel(inputs = {}) {
     const winProfit = win.reduce((s, e) => s + e.usd, 0);
     const winSales = win.filter((e) => e.usd > 0).length;
     v.p100 = winSales > 0 ? (winProfit / winSales) * 100 : null;
+    // Real verification receipt counts, whenever receipts exist for this
+    // variant; these are the ONLY defensible ok/attempt numbers.
+    const vr = acc.get(v.id);
+    v.verifiedOk = vr && vr.total > 0 ? vr.ok : null;
+    v.verifiedTotal = vr && vr.total > 0 ? vr.total : null;
     if (v.accuracy === null) {
-      const r = acc.get(v.id);
-      if (r && r.total > 0) v.accuracy = r.ok / r.total;
+      if (v.verifiedTotal) v.accuracy = v.verifiedOk / v.verifiedTotal;
       else if (v.sales > 0 && failCount.has(v.id)) {
         v.accuracy = Math.max(0, 1 - failCount.get(v.id) / v.sales);
         v.accuracyEst = true;
@@ -327,12 +338,12 @@ export function buildModel(inputs = {}) {
     if (v.status === 'LIVE') row.alive += 1;
     row.requests = (row.requests || 0) + (v.sales || 0);
     if (v.p100 !== null && v.p100 !== undefined) row.p100s.push(v.p100);
-    // Weighted accuracy: successes over attempts across the generation, not an
-    // unweighted mean of per-agent ratios (a 2-sale agent must not count as
-    // much as a 100-sale agent).
-    if (v.accuracy !== null && v.accuracy !== undefined && (v.sales || 0) > 0) {
-      row.accOk = (row.accOk || 0) + v.accuracy * v.sales;
-      row.accN = (row.accN || 0) + v.sales;
+    // Generation accuracy = sum of verified successes over sum of
+    // verification ATTEMPTS (receipt counts), never weighted by ledger sales
+    // (sales and verification attempts are different populations).
+    if (v.verifiedTotal) {
+      row.accOk = (row.accOk || 0) + v.verifiedOk;
+      row.accN = (row.accN || 0) + v.verifiedTotal;
     }
     if (v.accuracy !== null && v.accuracy !== undefined) row.accs.push(v.accuracy);
     if (v.price_usd !== null && v.price_usd !== undefined) row.prices.push(v.price_usd);
@@ -346,7 +357,7 @@ export function buildModel(inputs = {}) {
     requests: r.requests || 0,
     meanP100: mean(r.p100s),
     meanAccuracy: r.accN ? (r.accOk / r.accN) : mean(r.accs),
-    accuracyOk: r.accN ? Math.round(r.accOk) : null,
+    accuracyOk: r.accN ? r.accOk : null,
     accuracyN: r.accN || null,
     priceMin: r.prices.length ? Math.min(...r.prices) : null,
     priceMax: r.prices.length ? Math.max(...r.prices) : null,
@@ -355,20 +366,25 @@ export function buildModel(inputs = {}) {
 
   // Integration receipts: one proof row per sponsor tool, LIVE/local status
   // derived from actual runtime data, never asserted.
-  const infDebits = entries.filter((e) => /^inference_cost/.test(e.reason)).length;
+  // Pioneer vs labeled-fallback split: a debit whose model string carries the
+  // "(fallback:" label was served by Gemini, not Pioneer; count them apart.
+  const infAll = entries.filter((e) => /^inference_cost/.test(e.reason));
+  const infFallback = infAll.filter((e) => /fallback/i.test(e.reason)).length;
+  const infDebits = infAll.length - infFallback;
   const pioneerModels = [...new Set(variants.filter((v) => v.status === 'LIVE').map((v) => String(v.model).split(' ')[0]))];
+  const bandDelivered = mesh.filter((m) => m && m.mode === 'live').length;
   const latestTx = [...entries].reverse().find((e) => e.tx_hash && String(e.tx_hash).startsWith('0x') && String(e.tx_hash).length === 66)?.tx_hash || null;
   const txCount = entries.filter((e) => e.tx_hash && String(e.tx_hash).startsWith('0x') && String(e.tx_hash).length === 66).length;
   let verOk = 0; let verTotal = 0;
   for (const a of acc.values()) { verOk += a.ok; verTotal += a.total; }
   const receiptsStrip = {
     x402: { live: txCount > 0, txCount, latestTx },
-    pioneer: { live: infDebits > 0, models: pioneerModels.length, debits: infDebits },
+    pioneer: { live: infDebits > 0, models: pioneerModels.length, debits: infDebits, fallbacks: infFallback },
     gemini: { live: verTotal > 0, ok: verOk, total: verTotal },
-    band: { live: Boolean(inputs.state?.mesh_live), roomId: inputs.bandRoom?.chat_id || null },
+    band: { configured: Boolean(inputs.state?.mesh_live), delivered: bandDelivered, roomId: inputs.bandRoom?.chat_id || null },
     actian: { mode: inputs.state?.actian?.mode || 'unknown', counts: inputs.state?.actian?.counts || null },
     senso: { article: 'https://cited.md/article/what-is-the-invisible-hand-agent-economy-and-how-does-real-on-chain' },
-    replay: { fixSha: '4e68d75', recordings: ['https://app.replay.io/recording/3372926f-f110-4b18-b892-a2c884b451a5', 'https://app.replay.io/recording/ddf8df9b-77a7-42d5-9546-ba3d46d8ffaa'] },
+    replay: { fixShas: '4e68d75 + e2d1048', recordings: ['https://app.replay.io/recording/3372926f-f110-4b18-b892-a2c884b451a5', 'https://app.replay.io/recording/ddf8df9b-77a7-42d5-9546-ba3d46d8ffaa', 'https://app.replay.io/recording/ea7ab4b8-28d7-46b2-991c-3bac4925adbf'] },
     guild: { live: Boolean(inputs.state?.guild_live) },
   };
 
@@ -525,7 +541,7 @@ export function renderPage(model, { staticPage = false } = {}) {
       : '<span class="muted">n/a</span>';
     const accTxt = v.accuracy === null || v.accuracy === undefined
       ? '<span class="muted">n/a</span>'
-      : `<span class="${v.accuracy >= 0.7 ? 'pos' : 'neg'}">${(v.accuracy * 100).toFixed(0)}%${v.accuracyEst ? ' <span class="muted">est</span>' : ''}</span>`;
+      : `<span class="${v.accuracy >= 0.7 ? 'pos' : 'neg'}">${(v.accuracy * 100).toFixed(0)}%${v.verifiedTotal ? ` <span class="muted small">${v.verifiedOk}/${v.verifiedTotal}</span>` : ''}${v.accuracyEst ? ' <span class="muted">est</span>' : ''}</span>`;
     return `<tr>
       <td class="mono">${esc(v.id)}${v.niche ? `<div class="muted small">${esc(v.niche)}</div>` : ''}</td>
       <td class="mono center">${v.gen}</td>
@@ -643,19 +659,19 @@ export function renderPage(model, { staticPage = false } = {}) {
   </div>
 
   <div class="panel" id="receipts-panel" style="margin-bottom:16px">
-    <h2>Integration receipts <span class="muted">(status derived from runtime data, not asserted)</span></h2>
+    <h2>Integration proof summary <span class="muted">(labels state the KIND of proof each row carries)</span></h2>
     <div class="receipts">
       ${(() => {
         const r = m.receiptsStrip || {};
         const chip = (live, label) => `<span class="chip ${live ? 'alive' : 'warn'}">${label}</span>`;
         const rows = [
-          ['x402 / Base Sepolia', chip(r.x402?.live, r.x402?.live ? 'LIVE' : 'NONE'), r.x402?.latestTx ? `${r.x402.txCount} settlements; latest <a class="addr" href="${TX_EXPLORER}${esc(r.x402.latestTx)}" target="_blank" rel="noopener">${esc(shortAddr(r.x402.latestTx))}</a>` : 'no settlements yet'],
-          ['Pioneer', chip(r.pioneer?.live, r.pioneer?.live ? 'LIVE' : 'NONE'), `${r.pioneer?.models ?? 0} models across live variants; ${r.pioneer?.debits ?? 0} inference cost debits (estimates from the price table)`],
-          ['Gemini verifier', chip(r.gemini?.live, r.gemini?.live ? 'LIVE' : 'NONE'), `${r.gemini?.ok ?? 0}/${r.gemini?.total ?? 0} verified successes/attempts`],
-          ['BAND mesh', chip(r.band?.live, r.band?.live ? 'LIVE' : 'LOCAL'), r.band?.roomId ? `two-agent room ${esc(String(r.band.roomId).slice(0, 8))}..: buyer @mentions herald, herald answers settlements` : 'local mesh log'],
-          ['Actian VectorAI', chip(r.actian?.mode === 'live', String(r.actian?.mode || 'unknown').toUpperCase()), r.actian?.counts ? `genomes ${r.actian.counts.genomes ?? 0}, estates ${r.actian.counts.estates ?? 0}, failure clusters ${r.actian.counts.failures ?? 0} (this process)` : ''],
-          ['Senso', chip(true, 'LIVE'), `per-generation KB reports; public article <a class="addr" href="${esc(r.senso?.article || '')}" target="_blank" rel="noopener">cited.md</a>`],
-          ['Replay QA', chip(true, 'COMPLETE'), `2 defects found and fixed (commit ${esc(r.replay?.fixSha || '')}): <a class="addr" href="${esc(r.replay?.recordings?.[0] || '')}" target="_blank" rel="noopener">rec 1</a> <a class="addr" href="${esc(r.replay?.recordings?.[1] || '')}" target="_blank" rel="noopener">rec 2</a>`],
+          ['x402 / Base Sepolia', chip(r.x402?.live, r.x402?.live ? 'LIVE RECEIPT' : 'NOT OBSERVED'), r.x402?.latestTx ? `${r.x402.txCount} settlements; latest <a class="addr" href="${TX_EXPLORER}${esc(r.x402.latestTx)}" target="_blank" rel="noopener">${esc(shortAddr(r.x402.latestTx))}</a>` : 'no settlements yet'],
+          ['Pioneer', chip(r.pioneer?.live, r.pioneer?.live ? 'LIVE RECEIPT' : 'NOT OBSERVED'), `${r.pioneer?.models ?? 0} models across live variants; ${r.pioneer?.debits ?? 0} Pioneer inference debits + ${r.pioneer?.fallbacks ?? 0} labeled Gemini fallbacks (cost basis: price table estimates)`],
+          ['Gemini verifier', chip(r.gemini?.live, r.gemini?.live ? 'LIVE RECEIPT' : 'NOT OBSERVED'), `${r.gemini?.ok ?? 0}/${r.gemini?.total ?? 0} verified successes/attempts`],
+          ['BAND mesh', chip(r.band?.delivered > 0, r.band?.delivered > 0 ? 'LIVE RECEIPT' : (r.band?.configured ? 'CONFIGURED' : 'LOCAL')), r.band?.roomId ? `${r.band?.delivered ?? 0} events delivered to two-agent room ${esc(String(r.band.roomId).slice(0, 8))}..: buyer @mentions herald, herald answers` : 'local mesh log'],
+          ['Actian VectorAI', chip(r.actian?.mode === 'live', r.actian?.mode === 'live' ? 'LIVE' : String(r.actian?.mode || 'unknown').toUpperCase()), r.actian?.counts ? `genomes ${r.actian.counts.genomes ?? 0}, estates ${r.actian.counts.estates ?? 0}, failure clusters ${r.actian.counts.failures ?? 0} (this process's writes)` : ''],
+          ['Senso', chip(true, 'PUBLIC ARTIFACT'), `per-generation KB reports; engine-generated public article <a class="addr" href="${esc(r.senso?.article || '')}" target="_blank" rel="noopener">cited.md</a>`],
+          ['Replay QA', chip(true, 'QA ARTIFACT'), `2 rounds, 4 defects found and fixed (commits ${esc(r.replay?.fixShas || '')}): <a class="addr" href="${esc(r.replay?.recordings?.[0] || '')}" target="_blank" rel="noopener">rec 1</a> <a class="addr" href="${esc(r.replay?.recordings?.[1] || '')}" target="_blank" rel="noopener">rec 2</a> <a class="addr" href="${esc(r.replay?.recordings?.[2] || '')}" target="_blank" rel="noopener">rec 3</a>`],
           ['Guild', chip(false, 'LOCAL'), 'policy gate runs real rule traces in disclosed local mode; no live Guild API claimed'],
         ];
         return rows.map(([name, c, detail]) => `<div class="rrow"><span class="rname">${name}</span>${c}<span class="rdetail small">${detail}</span></div>`).join('\n');
@@ -716,6 +732,7 @@ export function renderPage(model, { staticPage = false } = {}) {
   <footer>
     Honesty bar: all USDC is Base Sepolia TESTNET. Demand is disclosed self-play:
     buyers are adversarial verifiers (schema + Gemini cross-check), not praise bots.
+    Deployed commit ${esc(DEPLOYED_SHA)}; snapshot ${esc(new Date(m.now).toISOString())}.
     ${m.treasury ? `Treasury: <a class="addr" href="${EXPLORER}${esc(m.treasury)}" target="_blank" rel="noopener">${esc(shortAddr(m.treasury))}</a>.` : ''}
     ${m.stateLive ? '' : 'Registry state endpoint offline; rendering from data files only.'}
   </footer>
@@ -725,9 +742,12 @@ ${staticPage ? '' : `<script>
 // its target=_blank navigation fired. Defer the swap while the user is
 // interacting (recent pointer activity or an active text selection).
 let lastInteraction = 0;
+let refreshInFlight = false;
 document.addEventListener('pointerdown', () => { lastInteraction = Date.now(); }, true);
 document.addEventListener('pointerup', () => { lastInteraction = Date.now(); }, true);
 setInterval(async () => {
+  if (refreshInFlight) return;
+  refreshInFlight = true;
   try {
     if (Date.now() - lastInteraction < 2500) return;
     const sel = window.getSelection && window.getSelection();
@@ -747,6 +767,7 @@ setInterval(async () => {
       if (newFeed && scrollTop > 0) newFeed.scrollTop = scrollTop;
     }
   } catch (e) { /* offline blip, keep last render */ }
+  finally { refreshInFlight = false; }
 }, 5000);
 </script>`}
 </body>
@@ -894,7 +915,10 @@ if (process.env.SELF_TEST) {
     ['feed buy_order is human-readable', model.feed.some((f) => f.type === 'buy_order' && !f.text.includes('"mode"'))],
     ['refresh defers during interaction', html.includes('lastInteraction') && html.includes("sel.type === 'Range'")],
     ['receipts strip computed', model.receiptsStrip.x402.txCount === 1 && model.receiptsStrip.gemini.total === 2],
-    ['receipts panel rendered without undefined', html.includes('Integration receipts') && !renderPage(model).match(/receipts-panel[\s\S]{0,2500}undefined/)],
+    ['receipts panel rendered without undefined', (() => {
+      const seg = html.slice(html.indexOf('receipts-panel'), html.indexOf('population-panel'));
+      return html.includes('Integration proof summary') && seg.length > 100 && !seg.includes('undefined');
+    })()],
     // Replay QA round 2 regression: population table geometry must be
     // content-independent (fixed layout + explicit colgroup).
     ['population table has fixed layout', html.includes('table-layout: fixed') && html.includes('<colgroup>')],
