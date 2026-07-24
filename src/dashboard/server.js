@@ -122,8 +122,12 @@ function walletAddrOf(raw) {
 }
 
 function normVariant(raw = {}) {
+  if (!raw || typeof raw !== 'object') raw = {};
   const g = raw.genome && typeof raw.genome === 'object' ? raw.genome : raw;
-  const status = String(raw.status || g.status || (raw.delisted ? 'BANKRUPT' : '') || '').toUpperCase();
+  // Honor an explicit alive:false from the engine even when no status string
+  // is present (a delisted variant must never fall through to LIVE).
+  let status = String(raw.status || g.status || (raw.delisted ? 'BANKRUPT' : '') || '').toUpperCase();
+  if (!status && raw.alive === false) status = 'BANKRUPT';
   return {
     id: String(raw.id || g.id || 'unknown'),
     gen: num(g.gen ?? raw.gen, 0) ?? 0,
@@ -133,6 +137,11 @@ function normVariant(raw = {}) {
       : Array.isArray(raw.parent_ids) ? raw.parent_ids.map(String) : [],
     niche: String(g.niche || raw.niche || ''),
     status,
+    // The engine reports authoritative pnl/fitness in /state; keep them so the
+    // dashboard can fall back to engine truth when the ledger file is empty
+    // (e.g. right after a snapshot restore).
+    statePnl: firstNum(raw.pnl),
+    stateFitness: firstNum(raw.fitness),
     bankroll_usd: firstNum(raw.bankroll_usd, raw.bankroll, raw.balance_usd, raw.balance),
     stake_usd: firstNum(raw.stake_usd, raw.stake, g.stake_usd),
     wallet: walletAddrOf(raw.wallet) || walletAddrOf(raw.address) || null,
@@ -148,7 +157,7 @@ function stateVariants(state) {
   if (!v) return [];
   if (!Array.isArray(v) && typeof v === 'object') v = Object.values(v);
   if (!Array.isArray(v)) return [];
-  return v.map(normVariant);
+  return v.filter(Boolean).map(normVariant);
 }
 
 function ledgerEntryNorm(e) {
@@ -181,7 +190,7 @@ export function buildModel(inputs = {}) {
     stakeDefault = DEFAULT_STAKE,
   } = inputs;
 
-  const entries = ledger.map(ledgerEntryNorm).filter((e) => e.id);
+  const entries = ledger.filter((e) => e && typeof e === 'object').map(ledgerEntryNorm).filter((e) => e.id);
 
   // per-variant ledger aggregation
   const agg = new Map();
@@ -205,6 +214,7 @@ export function buildModel(inputs = {}) {
   // receipts based accuracy: {id, verified} rows
   const acc = new Map();
   for (const r of receipts) {
+    if (!r || typeof r !== 'object') continue;
     const id = String(r.id ?? r.variant_id ?? r.seller ?? '');
     if (!id) continue;
     if (!acc.has(id)) acc.set(id, { ok: 0, total: 0 });
@@ -214,6 +224,7 @@ export function buildModel(inputs = {}) {
   }
   const failCount = new Map();
   for (const f of failures) {
+    if (!f || typeof f !== 'object') continue;
     const id = String(f.id ?? f.variant_id ?? f.seller ?? '');
     if (id) failCount.set(id, (failCount.get(id) || 0) + 1);
   }
@@ -241,9 +252,12 @@ export function buildModel(inputs = {}) {
     const a = agg.get(v.id) || {
       entries: [], stakeTotal: 0, balance: 0, sales: 0, volume: 0, txCount: 0, series: [],
     };
-    v.pnl = a.balance - a.stakeTotal;
+    // Ledger-derived P&L when the ledger has entries for this variant; else
+    // fall back to the engine's own reported pnl (survives a ledger reset).
+    v.pnl = a.entries.length ? (a.balance - a.stakeTotal) : (v.statePnl ?? 0);
     if (v.bankroll_usd === null) {
-      v.bankroll_usd = a.entries.length ? a.balance : null;
+      v.bankroll_usd = a.entries.length ? a.balance
+        : (v.statePnl !== null && v.stake_usd !== null ? v.stake_usd + v.statePnl : null);
     }
     v.stake = v.stake_usd ?? (a.stakeTotal > 0 ? a.stakeTotal : stakeDefault);
     v.sales = a.sales;
@@ -275,6 +289,7 @@ export function buildModel(inputs = {}) {
   // event feed: merged mesh + ledger tails, newest first
   const feed = [];
   for (const m of mesh.slice(-60)) {
+    if (!m || typeof m !== 'object') continue;
     feed.push({
       ts: parseTs(m),
       src: 'mesh',
@@ -380,7 +395,8 @@ function lineageHtml(variants) {
   const roots = variants.filter((v) => !hasParentInSet.has(v.id));
   const seen = new Set();
   const node = (id, depth) => {
-    if (seen.has(id) || depth > 12) return '';
+    if (seen.has(id)) return '';
+    if (depth > 12) return '<li><span class="muted">...</span></li>';
     seen.add(id);
     const v = byId.get(id);
     if (!v) return '';
@@ -389,7 +405,13 @@ function lineageHtml(variants) {
     return `<li><span class="lin ${cls}">${esc(id)}</span> <span class="muted">g${v.gen}</span>`
       + (kids ? `<ul>${kids}</ul>` : '') + '</li>';
   };
-  const body = roots.map((r) => node(r.id, 0)).join('');
+  let body = roots.map((r) => node(r.id, 0)).join('');
+  // Safety net: a parent_ids cycle among restored variants leaves some nodes
+  // with no root path. Surface any never-rendered variant as its own root so
+  // nothing silently vanishes from the lineage panel.
+  for (const v of variants) {
+    if (!seen.has(v.id)) body += node(v.id, 0);
+  }
   return body ? `<ul class="tree">${body}</ul>` : '<p class="muted">no lineage yet</p>';
 }
 
@@ -408,7 +430,7 @@ export function renderPage(model) {
     return `<tr>
       <td class="mono">${esc(v.id)}${v.niche ? `<div class="muted small">${esc(v.niche)}</div>` : ''}</td>
       <td class="mono center">${v.gen}</td>
-      <td class="mono small">${esc(v.model)}</td>
+      <td class="mono small model" title="${esc(v.model)}">${esc(v.model)}</td>
       <td class="mono">${v.price_usd === null ? '<span class="muted">n/a</span>' : esc(fmtUsd(v.price_usd))}</td>
       <td class="mono ${deltaClass(v.p100)}">${v.p100 === null ? 'n/a' : esc(fmtUsd(v.p100, 3))}</td>
       <td class="center">${accTxt}</td>
@@ -441,6 +463,7 @@ export function renderPage(model) {
 <title>Invisible Hand :: live market</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { max-width: 100%; overflow-x: hidden; }
   body { background: #0b0e14; color: #e5e7eb; font-family: ui-sans-serif, system-ui, sans-serif; padding: 18px 22px; }
   a { color: #60a5fa; text-decoration: none; }
   .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
@@ -460,8 +483,13 @@ export function renderPage(model) {
   .chip.dead { background: #450a0a; color: #ef4444; border: 1px solid #7f1d1d; }
   .chip.warn { background: #451a03; color: #f59e0b; border: 1px solid #78350f; }
   .grid { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; align-items: start; }
+  .grid > div { min-width: 0; }
   @media (max-width: 1100px) { .grid { grid-template-columns: 1fr; } }
-  .panel { background: #131826; border: 1px solid #1f2637; border-radius: 10px; padding: 14px 16px; overflow-x: auto; }
+  /* min-width:0 lets a grid item shrink below its table's min-content width so
+     the panel's own overflow-x:auto contains the wide table (no body scroll). */
+  .panel { background: #131826; border: 1px solid #1f2637; border-radius: 10px; padding: 14px 16px; overflow-x: auto; min-width: 0; }
+  td.model { max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  @media (max-width: 640px) { td.model { max-width: 120px; } }
   .panel h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 1.5px; color: #9ca3af; margin-bottom: 10px; }
   table { border-collapse: collapse; width: 100%; font-size: 13px; }
   th { text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #6b7280; padding: 6px 8px; border-bottom: 1px solid #1f2637; }
@@ -548,7 +576,15 @@ setInterval(async () => {
     const d = new DOMParser().parseFromString(t, 'text/html');
     const next = d.getElementById('app');
     const cur = document.getElementById('app');
-    if (next && cur) cur.replaceWith(next);
+    if (next && cur) {
+      // Preserve the event-feed scroll position across the DOM swap so a judge
+      // reading the feed is not yanked to the top every 5 seconds.
+      const prevFeed = cur.querySelector('.feed');
+      const scrollTop = prevFeed ? prevFeed.scrollTop : 0;
+      cur.replaceWith(next);
+      const newFeed = next.querySelector('.feed');
+      if (newFeed && scrollTop > 0) newFeed.scrollTop = scrollTop;
+    }
   } catch (e) { /* offline blip, keep last render */ }
 }, 5000);
 </script>
@@ -637,6 +673,24 @@ if (process.env.SELF_TEST) {
   };
   const model = buildModel(synthetic);
   const html = renderPage(model);
+
+  // Hostile-input model: null rows in every stream, XSS-y model string, a
+  // restored variant with engine pnl but NO ledger entries, alive:false with
+  // no status string, and a parent cycle. Must render, not crash.
+  const hostile = buildModel({
+    state: { variants: [
+      null,
+      { id: 'v-restored', gen: 1, model: 'models/gemini-flash-latest (fallback: Pioneer failed: HTTP 400 "<script>x</script>")', price_usd: 0.01, pnl: 0.07, fitness: 0.7, alive: true, stake_usd: 0.25, parent_ids: ['v-cyc-b'] },
+      { id: 'v-dead', gen: 0, model: 'q', price_usd: 0.02, alive: false, pnl: -0.3 },
+      { id: 'v-cyc-a', gen: 2, model: 'm', price_usd: 0.01, alive: true, parent_ids: ['v-cyc-b'] },
+      { id: 'v-cyc-b', gen: 2, model: 'm', price_usd: 0.01, alive: true, parent_ids: ['v-cyc-a'] },
+    ] },
+    ledger: [null, { id: 'v-unmatched', type: 'credit', usd: 0.01 }, 'not-an-object'],
+    mesh: [null, { type: 'announce', variant: 'v-restored' }],
+    failures: [null], receipts: [null],
+  });
+  const hostileHtml = renderPage(hostile);
+
   const checks = [
     ['two variants', model.variants.length === 2],
     ['gen counter is 3', model.genMax === 3],
@@ -650,6 +704,12 @@ if (process.env.SELF_TEST) {
     ['html has testnet honesty label', html.includes('TESTNET')],
     ['no long dashes', !/[\u2013\u2014\u2015]/.test(html)],
     ['empty inputs do not crash', renderPage(buildModel({})).includes('no variants yet')],
+    ['null state row dropped, not crashed', hostile.variants.length === 4],
+    ['restored variant pnl from engine (no ledger)', hostile.variants.find((v) => v.id === 'v-restored')?.pnl === 0.07],
+    ['alive:false maps to bankrupt', hostile.variants.find((v) => v.id === 'v-dead')?.status === 'BANKRUPT'],
+    ['XSS model string escaped in html', !hostileHtml.includes('<script>x</script>') && hostileHtml.includes('&lt;script&gt;')],
+    ['parent cycle both variants still rendered', hostileHtml.includes('v-cyc-a') && hostileHtml.includes('v-cyc-b')],
+    ['hostile render has no long dashes', !/[\u2013\u2014\u2015]/.test(hostileHtml)],
   ];
   let failed = 0;
   for (const [name, ok] of checks) {
