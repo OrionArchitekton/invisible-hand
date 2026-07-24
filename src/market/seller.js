@@ -95,15 +95,62 @@ function buildPrompt(sourceText, sourceUrl, genome) {
   ].filter(Boolean).join('\n');
 }
 
+// String-aware balanced scan: returns the first parseable block delimited by
+// open/close. Needed because pool models 200 with trailing prose or a second
+// object after the JSON, which a first-{-to-last-} slice spans.
+function scanBalanced(text, open, close) {
+  let attempts = 0;
+  for (let i = 0; i < text.length && attempts < 12; i++) {
+    if (text[i] !== open) continue;
+    attempts++;
+    let depth = 0;
+    let inStr = false;
+    let esc = false;
+    for (let j = i; j < text.length; j++) {
+      const ch = text[j];
+      if (esc) { esc = false; continue; }
+      if (inStr) {
+        if (ch === '\\') esc = true;
+        else if (ch === '"') inStr = false;
+        continue;
+      }
+      if (ch === '"') inStr = true;
+      else if (ch === open) depth++;
+      else if (ch === close) {
+        depth--;
+        if (depth === 0) {
+          try { return JSON.parse(text.slice(i, j + 1)); } catch { break; }
+        }
+      }
+    }
+  }
+  return null;
+}
+
+// {"claims":[...]} | bare [...] (Qwen emits the array unwrapped) -> claims[].
+function claimsFrom(parsed) {
+  if (Array.isArray(parsed)) return parsed;
+  if (parsed && Array.isArray(parsed.claims)) return parsed.claims;
+  return null;
+}
+
 function parseClaimsJson(raw, sourceUrl) {
   let text = String(raw || '').trim();
+  // Reasoning models (e.g. Qwen3) may prefix a <think> block whose braces
+  // would confuse brace scanning; strip it before extraction.
+  text = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
   const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (fence) text = fence[1].trim();
-  const start = text.indexOf('{');
-  const end = text.lastIndexOf('}');
-  if (start >= 0 && end > start) text = text.slice(start, end + 1);
-  const parsed = JSON.parse(text);
-  const claims = Array.isArray(parsed.claims) ? parsed.claims : [];
+  let claims = null;
+  try { claims = claimsFrom(JSON.parse(text)); } catch { /* scan below */ }
+  if (!claims) claims = claimsFrom(scanBalanced(text, '{', '}'));
+  if (!claims) claims = claimsFrom(scanBalanced(text, '[', ']'));
+  if (!claims) {
+    const start = text.indexOf('{');
+    const end = text.lastIndexOf('}');
+    if (start >= 0 && end > start) text = text.slice(start, end + 1);
+    claims = claimsFrom(JSON.parse(text)) || [];
+  }
   return claims
     .filter((c) => c && typeof c.text === 'string' && c.text.trim())
     .map((c) => ({
@@ -133,11 +180,18 @@ async function pioneerExtract(prompt, model, apiKey) {
       'X-API-Key': apiKey,
       Authorization: `Bearer ${apiKey}`,
     },
+    // No response_format: 4 of 6 pool models (incl. the pioneer/auto router)
+    // reject json_object with HTTP 400 "Invalid input" (live-probed 07-24);
+    // the prompt demands strict JSON and parseClaimsJson tolerates fences.
+    // max_tokens bounds the completion so prompt+completion always fits the
+    // window (unbounded default overflowed: "maximum context length" 400s).
     body: JSON.stringify({
       model,
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.2,
-      response_format: { type: 'json_object' },
+      // Reasoning models (Qwen3) spend tokens thinking before the JSON; give
+      // them headroom or they return 0 claims and starve on verification.
+      max_tokens: /qwen/i.test(model) ? 3072 : 1024,
     }),
   });
   if (!res.ok) {
@@ -292,8 +346,23 @@ export function makeExtractHandler(variant) {
   };
 }
 
-// Inline self-test: local-mode path only (no keys, no network).
+// Inline self-test: parser robustness + local-mode path (no keys, no network).
 if (process.env.SELF_TEST) {
+  const passert = (cond, msg) => {
+    if (!cond) { console.error('[seller self-test] PARSER FAIL:', msg); process.exit(1); }
+  };
+  const good = '{"claims":[{"text":"A claim.","source_url":"http://x","confidence":0.9}]}';
+  // Observed live 07-24: trailing prose / second object after valid JSON.
+  passert(parseClaimsJson(`${good}\n\nNote: I extracted {1} claim as requested.`, 'u').length === 1, 'trailing prose with braces');
+  passert(parseClaimsJson(`${good}\n{"debug":true}`, 'u').length === 1, 'second JSON object after claims');
+  passert(parseClaimsJson(`<think>Let me think {about} this.</think>${good}`, 'u').length === 1, 'think block stripped');
+  passert(parseClaimsJson('```json\n' + good + '\n```', 'u').length === 1, 'fenced JSON');
+  passert(parseClaimsJson(`Here you go: ${good}`, 'u').length === 1, 'leading prose');
+  passert(parseClaimsJson('{"claims":[{"text":"Brace } in \\"string\\".","source_url":"http://x","confidence":1}]} extra', 'u').length === 1, 'brace inside string literal');
+  // Observed live 07-24: Qwen3-8B emits the claims array UNWRAPPED.
+  passert(parseClaimsJson('[{"text":"Bare array claim.","source_url":"http://x","confidence":1}]', 'u').length === 1, 'bare top-level array');
+  passert(parseClaimsJson('Sure:\n[{"text":"Prefixed bare array.","source_url":"http://x","confidence":1}] done', 'u').length === 1, 'bare array with surrounding prose');
+  console.log('[seller self-test] parser robustness OK (8 cases)');
   const savedP = process.env.PIONEER_API_KEY;
   const savedG = process.env.GEMINI_API_KEY;
   delete process.env.PIONEER_API_KEY;
