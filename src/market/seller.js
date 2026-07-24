@@ -83,8 +83,10 @@ function buildPrompt(sourceText, sourceUrl, genome) {
   return [
     'You are a precise claim extraction engine.',
     'Extract the most important factual claims from the source text.',
-    'Return STRICT JSON only, no prose, matching exactly:',
-    '{"claims":[{"text":"<claim as a single sentence>","source_url":"<url>","confidence":<0..1>}]}',
+    // Concrete example, not <placeholder> tokens: models were echoing the
+    // placeholder schema verbatim ("confidence":<0..1>) as their output.
+    'Return STRICT JSON only, no prose, shaped exactly like this example:',
+    '{"claims":[{"text":"The company reported quarterly revenue of 4.2 billion dollars.","source_url":"https://example.com/article","confidence":0.9}]}',
     'Rules: 3 to 8 claims; each claim must be supported by the source text;',
     'confidence reflects how directly the source states it; use the provided source_url for every claim.',
     variantHint,
@@ -134,6 +136,47 @@ function claimsFrom(parsed) {
   return null;
 }
 
+// Last-resort salvage for TRUNCATED output (max_tokens cut mid-array): walk
+// the text collecting every complete, parseable claim-shaped {...} object and
+// drop the unbalanced tail. Partial claims beat a thrown-away response.
+function salvageClaimObjects(text) {
+  const out = [];
+  let i = 0;
+  let walks = 0;
+  while (i < text.length && out.length < 12 && walks < 64) {
+    if (text[i] !== '{') { i++; continue; }
+    walks++;
+    let depth = 0;
+    let inStr = false;
+    let esc = false;
+    let end = -1;
+    for (let j = i; j < text.length; j++) {
+      const ch = text[j];
+      if (esc) { esc = false; continue; }
+      if (inStr) {
+        if (ch === '\\') esc = true;
+        else if (ch === '"') inStr = false;
+        continue;
+      }
+      if (ch === '"') inStr = true;
+      else if (ch === '{') depth++;
+      else if (ch === '}') {
+        depth--;
+        if (depth === 0) { end = j; break; }
+      }
+    }
+    // Unbalanced block: a truncated WRAPPER can still contain complete claim
+    // objects, so skip this brace and keep scanning instead of bailing.
+    if (end < 0) { i++; continue; }
+    try {
+      const o = JSON.parse(text.slice(i, end + 1));
+      if (o && typeof o.text === 'string' && o.text.trim()) out.push(o);
+      i = end + 1;
+    } catch { i++; }
+  }
+  return out;
+}
+
 function parseClaimsJson(raw, sourceUrl) {
   let text = String(raw || '').trim();
   // Reasoning models (e.g. Qwen3) may prefix a <think> block whose braces
@@ -145,6 +188,10 @@ function parseClaimsJson(raw, sourceUrl) {
   try { claims = claimsFrom(JSON.parse(text)); } catch { /* scan below */ }
   if (!claims) claims = claimsFrom(scanBalanced(text, '{', '}'));
   if (!claims) claims = claimsFrom(scanBalanced(text, '[', ']'));
+  if (!claims) {
+    const salvaged = salvageClaimObjects(text);
+    if (salvaged.length) claims = salvaged;
+  }
   if (!claims) {
     const start = text.indexOf('{');
     const end = text.lastIndexOf('}');
@@ -189,9 +236,9 @@ async function pioneerExtract(prompt, model, apiKey) {
       model,
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.2,
-      // Reasoning models (Qwen3) spend tokens thinking before the JSON; give
-      // them headroom or they return 0 claims and starve on verification.
-      max_tokens: /qwen/i.test(model) ? 3072 : 1024,
+      // Reasoning models (Qwen3, gpt-oss) spend tokens thinking before the
+      // JSON; give headroom or they truncate mid-array / emit prose only.
+      max_tokens: /qwen|gpt-oss/i.test(model) ? 3072 : 2048,
     }),
   });
   if (!res.ok) {
@@ -362,7 +409,10 @@ if (process.env.SELF_TEST) {
   // Observed live 07-24: Qwen3-8B emits the claims array UNWRAPPED.
   passert(parseClaimsJson('[{"text":"Bare array claim.","source_url":"http://x","confidence":1}]', 'u').length === 1, 'bare top-level array');
   passert(parseClaimsJson('Sure:\n[{"text":"Prefixed bare array.","source_url":"http://x","confidence":1}] done', 'u').length === 1, 'bare array with surrounding prose');
-  console.log('[seller self-test] parser robustness OK (8 cases)');
+  // Observed live 07-24: max_tokens truncation mid-array -> salvage completes.
+  passert(parseClaimsJson('[{"text":"First complete claim.","source_url":"http://x","confidence":1},{"text":"Second complete claim.","source_url":"http://x","confidence":0.8},{"text":"Truncated cl', 'u').length === 2, 'truncated array salvages complete claims');
+  passert(parseClaimsJson('{"claims":[{"text":"Wrapped then truncated.","source_url":"http://x","confidence":1},{"text":"Cut off he', 'u').length === 1, 'truncated wrapped object salvages complete claims');
+  console.log('[seller self-test] parser robustness OK (10 cases)');
   const savedP = process.env.PIONEER_API_KEY;
   const savedG = process.env.GEMINI_API_KEY;
   delete process.env.PIONEER_API_KEY;

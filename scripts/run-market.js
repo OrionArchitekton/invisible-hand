@@ -36,6 +36,7 @@ import * as band from '../src/mesh/band.js';
 import * as guild from '../src/governance/guild.js';
 import { startFleet } from '../src/buyers/fleet.js';
 import { start as startDashboard } from '../src/dashboard/server.js';
+import { publishMarketReport, isSensoLive } from '../src/publish/senso.js';
 
 const MARKET_PORT = Number(process.env.MARKET_PORT || 4020);
 const STATE_PORT = Number(process.env.STATE_PORT || 3313);
@@ -185,7 +186,26 @@ async function main() {
     },
   });
 
-  // 9) Evolution cadence.
+  // 9) Senso publish cadence: per-generation market report into the org KB
+  //    (live when SENSO_API_KEY present; labeled local mode otherwise).
+  const SENSO_EVERY_MS = Number(process.env.SENSO_PUBLISH_EVERY_MS || 600_000);
+  let lastPublishedGen = -1;
+  const sensoTick = async (force = false) => {
+    try {
+      const s = engine.state();
+      if (!force && s.generation === lastPublishedGen) return;
+      await publishMarketReport(s);
+      lastPublishedGen = s.generation;
+    } catch (err) {
+      console.warn(`[run-market] senso publish failed: ${err.message}`);
+    }
+  };
+  console.log(`[run-market] senso publisher: ${isSensoLive() ? 'LIVE' : 'local mode'}, every ${SENSO_EVERY_MS}ms or on generation change`);
+  sensoTick(true);
+  const sensoTimer = setInterval(() => sensoTick(false), SENSO_EVERY_MS);
+  sensoTimer.unref?.();
+
+  // 10) Evolution cadence.
   engine.start();
   console.log('[run-market] market is LIVE.');
   console.log(`[run-market]   dashboard  http://localhost:${DASHBOARD_PORT}`);
@@ -199,6 +219,7 @@ async function main() {
     shuttingDown = true;
     console.log(`[run-market] ${signal}: shutting down`);
     try { clearInterval(snapTimer); writeSnapshot(); } catch { /* best effort */ }
+    try { clearInterval(sensoTimer); } catch { /* best effort */ }
     try { fleet.stop(); } catch { /* best effort */ }
     try { engine.stop(); } catch { /* best effort */ }
     try { registry.close(); } catch { /* best effort */ }
