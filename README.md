@@ -33,6 +33,10 @@ This project treats honesty as a feature under test:
 Live-call receipts for the non-chain integrations (so LIVE labels are as
 checkable as the tx hashes; ids are org-scoped, not secrets):
 
+- Senso full loop, KB to PUBLIC artifact: the market's own generation reports
+  were ingested into the Senso KB, and Senso's content engine generated and
+  published a public cited.md article from them (honesty bars propagated):
+  https://cited.md/article/what-is-the-invisible-hand-agent-economy-and-how-does-real-on-chain
 - Senso KB nodes (per-generation reports ingested via /org/kb/upload):
   content_id `6d94222f-8149-482e-bda1-9029e4a61771` at 19:12:10Z,
   `b9e25ce5-ef9e-499b-b2c8-303fe778ae9b` at 19:21:46Z,

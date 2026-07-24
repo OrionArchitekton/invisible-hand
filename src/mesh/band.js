@@ -69,20 +69,25 @@ function agentsFile() {
   return path.join(dataDir(), 'band-agents.json');
 }
 
-let cachedAgentKey = null;
+const AGENT_ROLES = {
+  'ih-market': 'Invisible Hand market herald: announces variants, settlements, bankruptcies, breeding',
+  'ih-buyer': 'Invisible Hand buyer fleet: posts buy orders into the market room and pays sellers via x402',
+};
+const cachedAgentKeys = new Map();
 
 // BAND auth model (live-verified 07-24): BAND_API_KEY is a HUMAN key, valid only on
 // /api/v1/me/*. Agent endpoints (/api/v1/agent/*) require a per-agent key minted via
-// POST /api/v1/me/agents/register (key returned exactly once). We mint one market
-// herald agent, persist it in data/band-agents.json (gitignored), and reuse it.
-async function ensureAgentKey() {
-  if (cachedAgentKey) return cachedAgentKey;
+// POST /api/v1/me/agents/register (key returned exactly once). We mint one agent per
+// ROLE (market herald + buyer), persist them in data/band-agents.json (gitignored),
+// and reuse them, so the room shows a real two-identity exchange.
+async function ensureAgentKey(name = 'ih-market') {
+  if (cachedAgentKeys.has(name)) return cachedAgentKeys.get(name);
   let store = { agents: {} };
   try { store = JSON.parse(fs.readFileSync(agentsFile(), 'utf8')); } catch { /* fresh */ }
-  const existing = store.agents && (store.agents['ih-market'] || store.agents['ih-probe']);
+  const existing = store.agents && (store.agents[name] || (name === 'ih-market' ? store.agents['ih-probe'] : null));
   if (existing && existing.api_key) {
-    cachedAgentKey = existing.api_key;
-    return cachedAgentKey;
+    cachedAgentKeys.set(name, existing.api_key);
+    return existing.api_key;
   }
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), HTTP_TIMEOUT_MS);
@@ -90,29 +95,60 @@ async function ensureAgentKey() {
     const res = await fetch(BAND_API_URL + '/api/v1/me/agents/register', {
       method: 'POST',
       headers: { 'X-API-Key': process.env.BAND_API_KEY, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ agent: { name: 'ih-market', description: 'Invisible Hand market herald: announces variants, buy orders, settlements, bankruptcies, breeding' } }),
+      body: JSON.stringify({ agent: { name, description: AGENT_ROLES[name] || 'Invisible Hand agent' } }),
       signal: ctl.signal,
     });
     const json = await res.json();
-    if (!res.ok) throw new Error(`BAND agent mint -> HTTP ${res.status}`);
+    if (!res.ok) throw new Error(`BAND agent mint (${name}) -> HTTP ${res.status}`);
     const key = json && json.data && json.data.credentials && json.data.credentials.api_key;
-    const id = json && json.data && json.data.agent && json.data.agent.id;
+    const agentObj = json && json.data && json.data.agent;
     if (!key) throw new Error('BAND agent mint returned no api_key');
     store.agents = store.agents || {};
-    store.agents['ih-market'] = { id, api_key: key };
+    store.agents[name] = { id: agentObj && agentObj.id, handle: agentObj && agentObj.handle, api_key: key };
     fs.mkdirSync(dataDir(), { recursive: true });
     fs.writeFileSync(agentsFile(), JSON.stringify(store, null, 2), { mode: 0o600 });
-    cachedAgentKey = key;
-    return cachedAgentKey;
+    cachedAgentKeys.set(name, key);
+    return key;
   } finally {
     clearTimeout(timer);
   }
 }
 
-async function bandRequest(method, apiPath, body) {
+// Resolve an agent's BAND identity {id, handle} from the persisted store. The
+// register response omits the handle, so we also learn it from the room's
+// participant list (cached back into the store by ensureParticipants).
+function agentIdentity(name) {
+  try {
+    const store = JSON.parse(fs.readFileSync(agentsFile(), 'utf8'));
+    const a = store.agents && store.agents[name];
+    if (a && a.id) return { id: a.id, handle: a.handle || name };
+  } catch { /* fall through */ }
+  return { id: null, handle: name };
+}
+
+// The herald identity is whichever agent actually holds the herald key
+// (ih-market if minted, else the ih-probe fallback that owns the room).
+function heraldIdentity() {
+  const m = agentIdentity('ih-market');
+  if (m.id) return m;
+  return agentIdentity('ih-probe');
+}
+
+function agentId(name) {
+  try {
+    const store = JSON.parse(fs.readFileSync(agentsFile(), 'utf8'));
+    return (store.agents && store.agents[name] && store.agents[name].id) || null;
+  } catch {
+    return null;
+  }
+}
+
+// The room is
+
+async function bandRequest(method, apiPath, body, { agentName = 'ih-market' } = {}) {
   const key = apiPath.startsWith('/api/v1/me/')
     ? process.env.BAND_API_KEY
-    : await ensureAgentKey();
+    : await ensureAgentKey(agentName);
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), HTTP_TIMEOUT_MS);
   try {
@@ -150,6 +186,7 @@ export async function ensureRoom() {
     const cached = JSON.parse(fs.readFileSync(roomCacheFile(), 'utf8'));
     if (cached && cached.chat_id) {
       cachedRoomId = cached.chat_id;
+      await ensureParticipants(cachedRoomId);
       return cachedRoomId;
     }
   } catch { /* no cache yet */ }
@@ -161,7 +198,50 @@ export async function ensureRoom() {
   if (!id) throw new Error('BAND room create returned no id');
   cachedRoomId = id;
   appendRoomCache(id);
+  await ensureParticipants(id);
   return id;
+}
+
+// Add both role agents to the room so the buyer's @mention and the herald's
+// reply are real participant messages (BAND 404/422s messages to non-members).
+// Best-effort and idempotent: an already-present agent just no-ops.
+let participantsJoined = false;
+async function ensureParticipants(chatId) {
+  if (participantsJoined) return;
+  // Mint the buyer identity so there are two distinct agents in the room.
+  await ensureAgentKey('ih-buyer').catch(() => null);
+  let store = { agents: {} };
+  try { store = JSON.parse(fs.readFileSync(agentsFile(), 'utf8')); } catch { /* fresh */ }
+  for (const name of ['ih-market', 'ih-buyer']) {
+    const id = store.agents && store.agents[name] && store.agents[name].id;
+    if (!id) continue;
+    try {
+      await bandRequest('POST', `/api/v1/agent/chats/${chatId}/participants`,
+        { participant: { participant_id: id, role: 'member' } });
+    } catch (err) {
+      if (err.status !== 409 && err.status !== 422) {
+        console.warn(`[mesh] add participant ${name} failed: ${err.message}`);
+      }
+    }
+  }
+  // Learn real handles from the participant list and cache them back so
+  // @mentions carry a resolvable {id, handle} (BAND 422s a handle-only mention).
+  try {
+    const list = await bandRequest('GET', `/api/v1/agent/chats/${chatId}/participants`);
+    const rows = (list && (list.data || list.participants)) || [];
+    const byId = new Map(rows.map((p) => [p.id, p.handle]));
+    let changed = false;
+    for (const [name, a] of Object.entries(store.agents || {})) {
+      if (a && a.id && byId.has(a.id) && a.handle !== byId.get(a.id)) {
+        a.handle = byId.get(a.id);
+        changed = true;
+      }
+    }
+    if (changed) fs.writeFileSync(agentsFile(), JSON.stringify(store, null, 2), { mode: 0o600 });
+  } catch (err) {
+    console.warn(`[mesh] participant handle sync failed: ${err.message}`);
+  }
+  participantsJoined = true;
 }
 
 function appendRoomCache(id) {
@@ -207,6 +287,27 @@ export async function emit(event) {
   }
   try {
     const chatId = await ensureRoom();
+    // Settlements answer the buyer's @mention as a herald MESSAGE, completing
+    // the visible two-agent exchange; other types stay audit events.
+    if (record.type === 'settlement') {
+      // Herald answers the buyer: an @mention message back to ih-buyer closes
+      // the two-agent exchange (buyer requested, herald reports the sale).
+      const buyer = agentIdentity('ih-buyer');
+      if (buyer.id) {
+        try {
+          await bandRequest('POST', `/api/v1/agent/chats/${chatId}/messages`, {
+            message: {
+              content: `@${buyer.handle} settlement: ${record.variant_id} sold extraction for $${record.price_usd}${record.tx_hash ? ` (tx ${record.tx_hash})` : ''}`,
+              mentions: [{ id: buyer.id, handle: buyer.handle }],
+            },
+          }, { agentName: 'ih-market' });
+          console.log('[mesh:live]', summarize(record), '(as ih-market reply to buyer)');
+          return record;
+        } catch (err) {
+          console.warn(`[mesh] herald settlement message failed (${err.message}); posting as event`);
+        }
+      }
+    }
     await bandRequest('POST', `/api/v1/agent/chats/${chatId}/events`, {
       event: toBandEvent(record),
     });
@@ -261,20 +362,22 @@ export async function buyOrder(task) {
   try {
     const chatId = await ensureRoom();
     let delivered = false;
-    if (sellerHandle) {
-      try {
-        await bandRequest('POST', `/api/v1/agent/chats/${chatId}/messages`, {
-          message: {
-            content: `@${sellerHandle} buy order: extract ${record.url || 'task'} at $${record.price_usd}`,
-            mentions: [{ handle: sellerHandle }],
-          },
-        });
-        delivered = true;
-        console.log('[mesh:live]', summarize(record), '(as @mention message)');
-      } catch (err) {
-        // 422 = handle not a room participant; fall through to the event feed.
-        console.warn(`[mesh] @mention message failed (${err.message}); posting as event`);
-      }
+    // Two-identity exchange: the BUYER agent posts the order as a real
+    // @mention message to the market herald (mention carries {id, handle} so
+    // BAND can resolve it); the herald answers with the settlement. Any
+    // failure falls back to the herald's event feed.
+    const herald = heraldIdentity();
+    try {
+      await bandRequest('POST', `/api/v1/agent/chats/${chatId}/messages`, {
+        message: {
+          content: `@${herald.handle} buy order: extract ${record.url || 'task'} from ${record.seller_id || 'a seller'} at $${record.price_usd}`,
+          mentions: [{ id: herald.id, handle: herald.handle }],
+        },
+      }, { agentName: 'ih-buyer' });
+      delivered = true;
+      console.log('[mesh:live]', summarize(record), '(as ih-buyer @mention message)');
+    } catch (err) {
+      console.warn(`[mesh] buyer @mention failed (${err.message}); posting as herald event`);
     }
     if (!delivered) {
       await bandRequest('POST', `/api/v1/agent/chats/${chatId}/events`, {
