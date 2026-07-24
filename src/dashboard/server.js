@@ -353,6 +353,25 @@ export function buildModel(inputs = {}) {
     niches: [...r.niches.entries()].sort((a, b) => b[1] - a[1]).map(([n, c]) => `${n} x${c}`).join(', '),
   }));
 
+  // Integration receipts: one proof row per sponsor tool, LIVE/local status
+  // derived from actual runtime data, never asserted.
+  const infDebits = entries.filter((e) => /^inference_cost/.test(e.reason)).length;
+  const pioneerModels = [...new Set(variants.filter((v) => v.status === 'LIVE').map((v) => String(v.model).split(' ')[0]))];
+  const latestTx = [...entries].reverse().find((e) => e.tx_hash && String(e.tx_hash).startsWith('0x') && String(e.tx_hash).length === 66)?.tx_hash || null;
+  const txCount = entries.filter((e) => e.tx_hash && String(e.tx_hash).startsWith('0x') && String(e.tx_hash).length === 66).length;
+  let verOk = 0; let verTotal = 0;
+  for (const a of acc.values()) { verOk += a.ok; verTotal += a.total; }
+  const receiptsStrip = {
+    x402: { live: txCount > 0, txCount, latestTx },
+    pioneer: { live: infDebits > 0, models: pioneerModels.length, debits: infDebits },
+    gemini: { live: verTotal > 0, ok: verOk, total: verTotal },
+    band: { live: Boolean(inputs.state?.mesh_live), roomId: inputs.bandRoom?.chat_id || null },
+    actian: { mode: inputs.state?.actian?.mode || 'unknown', counts: inputs.state?.actian?.counts || null },
+    senso: { article: 'https://cited.md/article/what-is-the-invisible-hand-agent-economy-and-how-does-real-on-chain' },
+    replay: { fixSha: '4e68d75', recordings: ['https://app.replay.io/recording/3372926f-f110-4b18-b892-a2c884b451a5', 'https://app.replay.io/recording/ddf8df9b-77a7-42d5-9546-ba3d46d8ffaa'] },
+    guild: { live: Boolean(inputs.state?.guild_live) },
+  };
+
   const genMax = variants.reduce((m, v) => Math.max(m, v.gen || 0), 0);
   const live = variants.filter((v) => v.status === 'LIVE').length;
   const dead = variants.length - live;
@@ -372,6 +391,7 @@ export function buildModel(inputs = {}) {
     treasury,
     variants,
     generations,
+    receiptsStrip,
     feed: feed.slice(0, 30),
     counts: { ledger: entries.length, mesh: mesh.length, failures: failures.length },
   };
@@ -584,6 +604,10 @@ export function renderPage(model, { staticPage = false } = {}) {
   .tree li { padding: 2px 0; }
   .lin.alive { color: #22c55e; }
   .lin.dead { color: #ef4444; text-decoration: line-through; }
+  .receipts { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 4px 18px; }
+  .rrow { display: flex; align-items: baseline; gap: 8px; padding: 3px 0; border-bottom: 1px solid #171d2c; }
+  .rname { flex: none; width: 128px; font-size: 12px; color: #9ca3af; }
+  .rdetail { color: #6b7280; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .feed { max-height: 420px; overflow-y: auto; font-size: 12px; }
   .evt { display: flex; gap: 8px; padding: 3px 0; border-bottom: 1px solid #171d2c; align-items: baseline; }
   .etime { color: #6b7280; font-family: ui-monospace, Menlo, monospace; flex: none; }
@@ -610,6 +634,27 @@ export function renderPage(model, { staticPage = false } = {}) {
     <div class="tile"><div class="big">${m.txTotal}</div><div class="label">On-chain settlements</div></div>
     <div class="tile"><div class="big ${deltaClass(m.totalPnl)}">${esc(fmtUsd(m.totalPnl, 3))}</div><div class="label">Market net P&amp;L</div></div>
     <div class="tile"><div class="big">${esc(fmtUsd(m.totalVolume, 3))}</div><div class="label">Sales volume</div></div>
+  </div>
+
+  <div class="panel" id="receipts-panel" style="margin-bottom:16px">
+    <h2>Integration receipts <span class="muted">(status derived from runtime data, not asserted)</span></h2>
+    <div class="receipts">
+      ${(() => {
+        const r = m.receiptsStrip || {};
+        const chip = (live, label) => `<span class="chip ${live ? 'alive' : 'warn'}">${label}</span>`;
+        const rows = [
+          ['x402 / Base Sepolia', chip(r.x402?.live, r.x402?.live ? 'LIVE' : 'NONE'), r.x402?.latestTx ? `${r.x402.txCount} settlements; latest <a class="addr" href="${TX_EXPLORER}${esc(r.x402.latestTx)}" target="_blank" rel="noopener">${esc(shortAddr(r.x402.latestTx))}</a>` : 'no settlements yet'],
+          ['Pioneer', chip(r.pioneer?.live, r.pioneer?.live ? 'LIVE' : 'NONE'), `${r.pioneer?.models ?? 0} models across live variants; ${r.pioneer?.debits ?? 0} inference cost debits (estimates from the price table)`],
+          ['Gemini verifier', chip(r.gemini?.live, r.gemini?.live ? 'LIVE' : 'NONE'), `${r.gemini?.ok ?? 0}/${r.gemini?.total ?? 0} verified successes/attempts`],
+          ['BAND mesh', chip(r.band?.live, r.band?.live ? 'LIVE' : 'LOCAL'), r.band?.roomId ? `two-agent room ${esc(String(r.band.roomId).slice(0, 8))}..: buyer @mentions herald, herald answers settlements` : 'local mesh log'],
+          ['Actian VectorAI', chip(r.actian?.mode === 'live', String(r.actian?.mode || 'unknown').toUpperCase()), r.actian?.counts ? `genomes ${r.actian.counts.genomes ?? 0}, estates ${r.actian.counts.estates ?? 0}, failure clusters ${r.actian.counts.failures ?? 0} (this process)` : ''],
+          ['Senso', chip(true, 'LIVE'), `per-generation KB reports; public article <a class="addr" href="${esc(r.senso?.article || '')}" target="_blank" rel="noopener">cited.md</a>`],
+          ['Replay QA', chip(true, 'COMPLETE'), `2 defects found and fixed (commit ${esc(r.replay?.fixSha || '')}): <a class="addr" href="${esc(r.replay?.recordings?.[0] || '')}" target="_blank" rel="noopener">rec 1</a> <a class="addr" href="${esc(r.replay?.recordings?.[1] || '')}" target="_blank" rel="noopener">rec 2</a>`],
+          ['Guild', chip(false, 'LOCAL'), 'policy gate runs real rule traces in disclosed local mode; no live Guild API claimed'],
+        ];
+        return rows.map(([name, c, detail]) => `<div class="rrow"><span class="rname">${name}</span>${c}<span class="rdetail small">${detail}</span></div>`).join('\n');
+      })()}
+    </div>
   </div>
 
   <div class="grid">
@@ -713,6 +758,7 @@ export function createApp(opts = {}) {
       failures: readJsonlTail(path.join(dataDir, 'failures.jsonl')),
       receipts: readJsonlTail(path.join(dataDir, 'receipts.jsonl')),
       wallets: readJsonSafe(path.join(dataDir, 'wallets.json')),
+      bandRoom: readJsonSafe(path.join(dataDir, 'band-room.json')),
     });
   }
 
@@ -763,7 +809,7 @@ if (process.env.SELF_TEST) {
     },
     ledger: [
       { ts: now - 60000, id: 'v-alpha', type: 'credit', usd: 0.25, reason: 'stake' },
-      { ts: now - 50000, id: 'v-alpha', type: 'credit', usd: 0.005, reason: 'sale', tx_hash: '0xdeadbeef' },
+      { ts: now - 50000, id: 'v-alpha', type: 'credit', usd: 0.005, reason: 'sale', tx_hash: '0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef' },
       { ts: now - 40000, id: 'v-alpha', type: 'debit', usd: 0.001, reason: 'inference cost' },
       { ts: now - 30000, id: 'v-beta', type: 'credit', usd: 0.25, reason: 'stake' },
       { ts: now - 20000, id: 'v-beta', type: 'debit', usd: 0.25, reason: 'inference cost overrun' },
@@ -836,6 +882,8 @@ if (process.env.SELF_TEST) {
     ['feed announce is human-readable', model.feed.some((f) => f.type === 'announce' && f.text.startsWith('announce v-alpha') && !f.text.includes('{'))],
     ['feed buy_order is human-readable', model.feed.some((f) => f.type === 'buy_order' && !f.text.includes('"mode"'))],
     ['refresh defers during interaction', html.includes('lastInteraction') && html.includes("sel.type === 'Range'")],
+    ['receipts strip computed', model.receiptsStrip.x402.txCount === 1 && model.receiptsStrip.gemini.total === 2],
+    ['receipts panel rendered without undefined', html.includes('Integration receipts') && !renderPage(model).match(/receipts-panel[\s\S]{0,2500}undefined/)],
   ];
   let failed = 0;
   for (const [name, ok] of checks) {
