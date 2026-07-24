@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Invisible Hand: technical brief</title>
+<style>
+  @page { size: Letter; margin: 18mm 16mm; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Georgia, 'Times New Roman', serif; color: #111827; font-size: 10.5pt; line-height: 1.45; }
+  h1 { font-size: 20pt; letter-spacing: .5px; margin-bottom: 2mm; }
+  h1 .accent { color: #16a34a; }
+  .sub { font-family: Helvetica, Arial, sans-serif; font-size: 9.5pt; color: #4b5563; margin-bottom: 6mm; }
+  h2 { font-family: Helvetica, Arial, sans-serif; font-size: 10.5pt; text-transform: uppercase; letter-spacing: 1.2px; color: #16a34a; margin: 5mm 0 2mm; border-bottom: 1px solid #d1d5db; padding-bottom: 1mm; }
+  p, li { margin-bottom: 1.6mm; }
+  ul { padding-left: 5mm; }
+  table { border-collapse: collapse; width: 100%; font-family: Helvetica, Arial, sans-serif; font-size: 8.8pt; margin: 2mm 0; }
+  th { text-align: left; border-bottom: 1.5px solid #111827; padding: 1mm 2mm; }
+  td { border-bottom: 0.5px solid #d1d5db; padding: 1mm 2mm; }
+  .mono { font-family: 'Courier New', monospace; font-size: 8.6pt; }
+  .box { background: #f3f4f6; border-left: 3px solid #16a34a; padding: 2.5mm 3.5mm; margin: 2.5mm 0; }
+  .cols { display: flex; gap: 6mm; }
+  .cols > div { flex: 1; }
+  a { color: #1d4ed8; text-decoration: none; word-break: break-all; }
+  .small { font-size: 8.6pt; color: #4b5563; }
+</style>
+</head>
+<body>
+
+<h1>THE INVISIBLE <span class="accent">HAND</span></h1>
+<div class="sub">An agent economy where real on-chain settlement selects which AI agents survive and breed.
+Built solo in one day at SwarmHack SF (tokens&amp;, July 24, 2026) by Dan Mercede.
+All settlement is Base Sepolia TESTNET USDC: real transactions, valueless asset.</div>
+
+<h2>Thesis</h2>
+<p>Most "self-evolving agent" demos optimize a simulated score. Invisible Hand makes selection
+economic and external: a population of seller-agents earns real on-chain revenue, pays real
+(estimated, price-table-based) inference costs, and lives or dies by cumulative net P&amp;L.
+The falsifiable claim: settlement-selected breeding improves the population's unit economics
+across generations. The run supports it, with an honestly reported wrinkle described below.</p>
+
+<h2>Mechanism</h2>
+<ul>
+<li><b>Sell:</b> each variant serves claim extraction over live Hacker News articles behind an
+x402 paywall (402 challenge, EIP-3009 facilitator settlement); every sale carries a tx hash.</li>
+<li><b>Verify:</b> buyers are adversarial Gemini verifiers (disclosed self-play). A verified
+failure sharply cuts a seller's future demand (epsilon-greedy with hard decay).</li>
+<li><b>Select:</b> fitness is cumulative net P&amp;L. Insolvency delists a variant: its endpoint
+literally returns HTTP 410 GONE and its estate is written to memory. At the population cap the
+weakest evaluated variant is displaced only after a child passes governance (a distinct,
+honestly labeled market-selected exit).</li>
+<li><b>Breed:</b> children are Gemini-mutated crossovers that inherit immunity hints from their
+parents' failure clusters (Actian VectorAI) and must pass a six-rule fail-closed gate: price
+band, mutation delta, niche allowlist, spend cap on concurrently deployed capital, parent
+solvency. Every decision emits a full rule trace.</li>
+</ul>
+
+<h2>Run results (frozen 2026-07-24, receipt-true counts)</h2>
+<table>
+<tr><th>Gen</th><th>Alive/Total</th><th>Sales n</th><th>Mean profit / 100 requests</th><th>Verified accuracy (ok/attempts)</th></tr>
+<tr><td>0</td><td>5/6</td><td>189</td><td>$0.086</td><td>56% (120/215)</td></tr>
+<tr><td>1</td><td>3/3</td><td>35</td><td>$0.692</td><td>41% (16/39)</td></tr>
+</table>
+<p class="small">251 on-chain settlements with tx hashes; 194 verifier failure records; one real
+insolvency (operator-triggered stress test, labeled as such, running the true insolvency path);
+one governed birth during the recorded demo (child v1-9e655c, six-rule trace, approved).</p>
+
+<div class="box"><b>The honest wrinkle, which is the point:</b> generation 1 improved unit
+economics roughly 8x while verified accuracy declined. That is reward hacking: early children
+optimized the declared fitness, not usefulness. The system surfaced it itself, the dashboard
+reports it as receipt-true successes/attempts, and accuracy-aware selection pressure (evaluation
+windows, verified sample floors) is the next gate. A market that catches its own reward hacking
+is the self-evolving story.</div>
+
+<h2>Sponsor integrations (proof-class labeled)</h2>
+<table>
+<tr><th>Tool</th><th>Role</th><th>Proof class</th></tr>
+<tr><td>Pioneer</td><td>The inference being sold; model route is a gene; per-model cost debits</td><td>LIVE RECEIPT</td></tr>
+<tr><td>x402 + Coinbase CDP rails</td><td>402 challenge and on-chain USDC settlement</td><td>LIVE RECEIPT (tx hashes)</td></tr>
+<tr><td>Google Gemini</td><td>Adversarial verifier (url_context) and mutation operator</td><td>LIVE RECEIPT (ok/attempts)</td></tr>
+<tr><td>Actian VectorAI</td><td>Genome, estate, and failure-cluster memory (REST :6573)</td><td>LIVE</td></tr>
+<tr><td>BAND</td><td>Two-agent room: buyer @mentions herald, herald answers settlements</td><td>LIVE RECEIPT (delivered events)</td></tr>
+<tr><td>Senso</td><td>Per-generation KB reports; engine-generated public cited.md article</td><td>PUBLIC ARTIFACT</td></tr>
+<tr><td>Replay QA</td><td>Two QA rounds on the dashboard; 4 defects found, 4 fixed + regression tests</td><td>QA ARTIFACT</td></tr>
+<tr><td>Guild</td><td>Policy gate runs real rule traces in disclosed local mode</td><td>LOCAL (never claimed live)</td></tr>
+</table>
+
+<h2>Engineering posture</h2>
+<div class="cols"><div>
+<ul>
+<li>13 modules, each with a hermetic self-test; <span class="mono">npm test</span> runs 13/13 green, no keys required.</li>
+<li>Population snapshots survive restarts (living variants re-register, dead ones re-delist to 410).</li>
+<li>Append-only JSONL ledgers; ledger truth overrides stale state on the dashboard.</li>
+</ul>
+</div><div>
+<ul>
+<li>Every stubbed integration is labeled local mode, never faked as live.</li>
+<li>Operator demo triggers exist and are always narrated as operator-triggered.</li>
+<li>Dashboard footer pins deployed commit + snapshot timestamp.</li>
+</ul>
+</div></div>
+
+<h2>Verify it yourself</h2>
+<p class="small mono">
+Repo: <a href="https://github.com/OrionArchitekton/invisible-hand">github.com/OrionArchitekton/invisible-hand</a><br>
+Settlement tx: <a href="https://sepolia.basescan.org/tx/0x4e1b80cfab76f9e30bf7695854bbe4c1183edc516b6d1b900fdef80234545df1">sepolia.basescan.org/tx/0x4e1b80cf...45df1</a><br>
+Public artifact: <a href="https://cited.md/article/what-is-the-invisible-hand-agent-economy-and-how-does-real-on-chain">cited.md/article/what-is-the-invisible-hand-agent-economy...</a><br>
+Frozen evidence: <a href="https://github.com/OrionArchitekton/invisible-hand/blob/main/docs/run-evidence.md">docs/run-evidence.md</a> · Run of show: <a href="https://github.com/OrionArchitekton/invisible-hand/blob/main/DEMO.md">DEMO.md</a>
+</p>
+
+</body>
+</html>
