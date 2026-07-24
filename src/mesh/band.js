@@ -65,14 +65,61 @@ function summarize(event) {
   return bits.join(' ');
 }
 
+function agentsFile() {
+  return path.join(dataDir(), 'band-agents.json');
+}
+
+let cachedAgentKey = null;
+
+// BAND auth model (live-verified 07-24): BAND_API_KEY is a HUMAN key, valid only on
+// /api/v1/me/*. Agent endpoints (/api/v1/agent/*) require a per-agent key minted via
+// POST /api/v1/me/agents/register (key returned exactly once). We mint one market
+// herald agent, persist it in data/band-agents.json (gitignored), and reuse it.
+async function ensureAgentKey() {
+  if (cachedAgentKey) return cachedAgentKey;
+  let store = { agents: {} };
+  try { store = JSON.parse(fs.readFileSync(agentsFile(), 'utf8')); } catch { /* fresh */ }
+  const existing = store.agents && (store.agents['ih-market'] || store.agents['ih-probe']);
+  if (existing && existing.api_key) {
+    cachedAgentKey = existing.api_key;
+    return cachedAgentKey;
+  }
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), HTTP_TIMEOUT_MS);
+  try {
+    const res = await fetch(BAND_API_URL + '/api/v1/me/agents/register', {
+      method: 'POST',
+      headers: { 'X-API-Key': process.env.BAND_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agent: { name: 'ih-market', description: 'Invisible Hand market herald: announces variants, buy orders, settlements, bankruptcies, breeding' } }),
+      signal: ctl.signal,
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(`BAND agent mint -> HTTP ${res.status}`);
+    const key = json && json.data && json.data.credentials && json.data.credentials.api_key;
+    const id = json && json.data && json.data.agent && json.data.agent.id;
+    if (!key) throw new Error('BAND agent mint returned no api_key');
+    store.agents = store.agents || {};
+    store.agents['ih-market'] = { id, api_key: key };
+    fs.mkdirSync(dataDir(), { recursive: true });
+    fs.writeFileSync(agentsFile(), JSON.stringify(store, null, 2), { mode: 0o600 });
+    cachedAgentKey = key;
+    return cachedAgentKey;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function bandRequest(method, apiPath, body) {
+  const key = apiPath.startsWith('/api/v1/me/')
+    ? process.env.BAND_API_KEY
+    : await ensureAgentKey();
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), HTTP_TIMEOUT_MS);
   try {
     const res = await fetch(BAND_API_URL + apiPath, {
       method,
       headers: {
-        'X-API-Key': process.env.BAND_API_KEY,
+        'X-API-Key': key,
         'Content-Type': 'application/json',
       },
       body: body === undefined ? undefined : JSON.stringify(body),
