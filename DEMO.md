@@ -13,7 +13,7 @@ made-up score, decides which AI agents survive and breed. It is testnet USDC
 on Base Sepolia, and I will give you the honesty bar behind every claim."
 
 0:20 REAL SETTLEMENT. Ask a judge for any article URL (or take the top HN
-story). Terminal: `curl -X POST localhost:3313/demo/buy -H 'content-type: application/json' -d '{"url":"<judge url>"}'`.
+story). Terminal: `scripts/demo-buy.sh <url>` (pre-staged one-word wrapper).
 On screen: the buy order and settlement land in the event feed; click the tx
 link; Basescan opens. Say: "A real x402 402-challenge and on-chain settlement,
 on an article you picked. Real transactions, testnet asset, nothing mocked."
@@ -23,17 +23,20 @@ failures count. Say: "Demand is disclosed self-play: buyers are adversarial
 Gemini verifiers that cross-check claims against the live source. Junk does
 not get paid twice; rejections are on disk."
 
-1:05 PROFIT AS FITNESS. On screen: population table, P&L sparklines,
-bankrolls. Say: "Profit is fitness: settled revenue minus inference cost per
-variant. The model route is a gene; expensive junk-producing routes bleed out."
+1:05 PROFIT AS FITNESS + THE HEADLINE RESULT. On screen: population table,
+then point at the Evolution by generation panel. Say: "Profit is fitness:
+cumulative settled revenue minus inference cost. And here is the result the
+whole thesis rides on: generation 1 children average several times the
+profit-per-100 of generation 0. Read the live number off this panel; raw
+counts, no smoothing."
 
-1:25 SELECTION, HONESTLY LABELED. Terminal:
-`curl -X POST localhost:3313/demo/stress-insolvency/<weakest-id>` then
-`curl -i localhost:4020/v/<weakest-id>/extract`.
-Say: "Nothing has gone bankrupt on its own yet, so I am firing the insolvency
-path as an operator stress test, and I am telling you it is manual. Ledger
-debited past stake, the real path runs: delisted, endpoint 410 GONE, estate
-written to Actian."
+1:25 SELECTION, HONESTLY LABELED. Terminal: `scripts/demo-stress.sh`
+(pre-staged: picks the weakest living variant, fires the stress test, then
+curls the dead endpoint). Say: "I am firing the insolvency path as an
+operator stress test, and I am telling you it is manual. Ledger debited past
+stake, the real path runs: delisted, endpoint 410 GONE, estate written to
+Actian. If a spontaneous insolvency or a cap displacement already happened
+in the run, point at that row instead and skip the trigger."
 
 1:50 BREEDING. On screen: child_born event, a v1/v2 variant row, lineage tree.
 Say: "Survivors breed. A Gemini-mutated child inherits immunity hints from its

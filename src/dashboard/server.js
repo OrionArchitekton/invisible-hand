@@ -358,14 +358,44 @@ export function buildModel(inputs = {}) {
   };
 }
 
+// Human-readable feed lines per event type (Replay QA finding: raw JSON with
+// internal keys was rendered to end users). Unknown types fall back to
+// compact JSON, truncated.
 function feedText(m) {
-  const clone = { ...m };
-  delete clone.ts; delete clone.time; delete clone.timestamp; delete clone.type;
-  delete clone.event; delete clone.kind;
-  let s = '';
-  try { s = JSON.stringify(clone); } catch { s = String(clone); }
-  if (s.length > 140) s = s.slice(0, 137) + '...';
-  return s;
+  const type = String(m.type ?? m.event ?? m.kind ?? '');
+  const id = m.variant_id || m.variant || m.seller_id || m.id || '';
+  const usd = (v) => (num(v) === null ? '' : fmtUsd(num(v)));
+  const short = (s, n = 60) => { const t = String(s || ''); return t.length > n ? t.slice(0, n - 3) + '...' : t; };
+  switch (type) {
+    case 'buy_order':
+      return `buy order -> ${id || 'seller'}${m.url || m.task_url ? `: ${short(m.url || m.task_url)}` : ''}`;
+    case 'settlement':
+      return `settlement ${id} ${usd(m.price_usd ?? m.price)}${m.verified === false ? ' (verification FAILED)' : m.verified === true ? ' (verified)' : ''}`;
+    case 'announce':
+      return `announce ${id}${m.model ? ` (${short(m.model, 40)})` : ''}${m.price_usd ? ` at ${usd(m.price_usd)}` : ''}`;
+    case 'governance_block': {
+      let rule = '';
+      try { rule = (m.trace || []).filter((t) => t && t.ok === false).map((t) => t.rule).join(', '); } catch { /* trace shape varies */ }
+      return `guild BLOCKED child ${id}${rule ? ` (${rule})` : ''}`;
+    }
+    case 'bankruptcy':
+      return `bankruptcy ${id}${m.final_pnl !== undefined ? ` (final pnl ${usd(m.final_pnl)})` : ''}: delisted, estate written`;
+    case 'market_exit':
+      return `market-selected exit ${id}: displaced by offspring at population cap`;
+    case 'child_born':
+      return `child born ${id} gen ${m.gen ?? '?'}${Array.isArray(m.parent_ids) && m.parent_ids.length ? ` from ${m.parent_ids.join(' + ')}` : ''}`;
+    case 'variant_seeded':
+      return `seeded ${id}${m.model ? ` (${short(m.model, 40)})` : ''}`;
+    default: {
+      const clone = { ...m };
+      delete clone.ts; delete clone.time; delete clone.timestamp; delete clone.type;
+      delete clone.event; delete clone.kind;
+      let s = '';
+      try { s = JSON.stringify(clone); } catch { s = String(clone); }
+      if (s.length > 140) s = s.slice(0, 137) + '...';
+      return s;
+    }
+  }
 }
 
 // ---------- rendering ----------
@@ -445,8 +475,11 @@ function lineageHtml(variants) {
 export function renderPage(model) {
   const m = model;
   const rows = m.variants.map((v) => {
+    // A displaced (market-selected exit) variant is dead but SOLVENT: label it
+    // DELISTED, never BANKRUPT. Only insolvency earns the BANKRUPT chip.
+    const insolvent = /insolven|bankroll exhausted|bankrupt/i.test(v.reason || '');
     const statusChip = v.status === 'BANKRUPT'
-      ? '<span class="chip dead">BANKRUPT</span>'
+      ? `<span class="chip dead">${insolvent || !v.reason ? 'BANKRUPT' : 'DELISTED'}</span>`
       : '<span class="chip alive">LIVE</span>';
     const wallet = v.wallet
       ? `<a class="addr" href="${EXPLORER}${esc(v.wallet)}" target="_blank" rel="noopener">${esc(shortAddr(v.wallet))}</a>`
@@ -612,8 +645,17 @@ export function renderPage(model) {
   </footer>
 </div>
 <script>
+// Replay QA finding: replacing #app mid-click destroyed a tx anchor before
+// its target=_blank navigation fired. Defer the swap while the user is
+// interacting (recent pointer activity or an active text selection).
+let lastInteraction = 0;
+document.addEventListener('pointerdown', () => { lastInteraction = Date.now(); }, true);
+document.addEventListener('pointerup', () => { lastInteraction = Date.now(); }, true);
 setInterval(async () => {
   try {
+    if (Date.now() - lastInteraction < 2500) return;
+    const sel = window.getSelection && window.getSelection();
+    if (sel && sel.type === 'Range') return;
     const r = await fetch(location.pathname, { cache: 'no-store' });
     const t = await r.text();
     const d = new DOMParser().parseFromString(t, 'text/html');
@@ -756,6 +798,11 @@ if (process.env.SELF_TEST) {
     ['generations aggregated', model.generations.length === 2 && model.generations[0].gen === 2 && model.generations[1].gen === 3],
     ['generation alive counts', model.generations[0].alive === 1 && model.generations[1].alive === 0],
     ['evolution panel rendered', html.includes('Evolution by generation')],
+    // Replay QA regression guards: known mesh events render human-readable,
+    // not raw JSON; the interaction-aware refresh guard ships in the page JS.
+    ['feed announce is human-readable', model.feed.some((f) => f.type === 'announce' && f.text.startsWith('announce v-alpha') && !f.text.includes('{'))],
+    ['feed buy_order is human-readable', model.feed.some((f) => f.type === 'buy_order' && !f.text.includes('"mode"'))],
+    ['refresh defers during interaction', html.includes('lastInteraction') && html.includes("sel.type === 'Range'")],
   ];
   let failed = 0;
   for (const [name, ok] of checks) {

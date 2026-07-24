@@ -30,6 +30,20 @@ This project treats honesty as a feature under test:
   P&L, with dozens of verifier rejections on disk in `data/failures.jsonl`.
 - `npm test` runs 13 module self-test suites (no keys required); all pass.
 
+Live-call receipts for the non-chain integrations (so LIVE labels are as
+checkable as the tx hashes; ids are org-scoped, not secrets):
+
+- Senso KB nodes (per-generation reports ingested via /org/kb/upload):
+  content_id `6d94222f-8149-482e-bda1-9029e4a61771` at 19:12:10Z,
+  `b9e25ce5-ef9e-499b-b2c8-303fe778ae9b` at 19:21:46Z,
+  `91fde98c-5551-4ed5-9305-f8852a8a9043` at 19:40:08Z (2026-07-24).
+- BAND: registered agents `ih-probe` and `ih-market` (per-agent keys minted
+  via the documented register flow); mesh events stream as `[mesh:live]` and
+  `/state` reports `mesh_live: true`.
+- Actian VectorAI: `/state` reports mode `live` against REST :6573; counts
+  shown there are process-local write counts, and `data/actian-local.jsonl`
+  is the write-through mirror of everything sent to the server.
+
 ## How it works
 
 A population of seller-agent variants sells structured claim extraction over
@@ -41,12 +55,28 @@ parents, generation, price, model route, prompt variant, niche.
 - An adversarial buyer fleet pays sellers with x402 (402 challenge, EIP-3009
   settlement via the public facilitator), verifies every response, and shifts
   future purchases toward verified quality.
+- Fitness is cumulative net P&L (settled revenue minus inference cost, from
+  the append-only ledger). Profit-per-100-requests is shown on the dashboard
+  as a unit-economics view but is deliberately NOT the fitness function: it
+  normalizes away volume, and a verified-bad seller that loses all demand
+  must lose fitness, not idle as a solvent zombie.
 - Insolvent variants (bankroll exhausted) are delisted: their endpoint
   literally returns HTTP 410 GONE, and their estate is written to memory.
+- At the population cap, breeding does not stall: the lowest-fitness living
+  variant is displaced by the incoming child. This is labeled a
+  market-selected exit, never a bankruptcy; only true insolvency earns that
+  word.
 - Survivors breed. Children are mutated by Gemini, inherit immunity hints from
   their parents' failure clusters, and must pass a fail-closed governance gate
   (price band, mutation delta, niche allowlist, spend cap, parent solvency)
   before receiving a wallet and a stake.
+
+The falsifiable thesis: a population selected by real settlement improves its
+economics across generations. Evidence so far, raw and unsmoothed, on the
+dashboard's Evolution panel: generation 1 variants average several times the
+profit-per-100 of generation 0 in the live run. Self-play demand is disclosed;
+the selection mechanism (pay, verify, decay, displace) does not depend on who
+the buyers are, which is why it should generalize to exogenous demand.
 
 ## Sponsor tools
 

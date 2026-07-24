@@ -134,12 +134,40 @@ export function createEngine(deps = {}, opts = {}) {
     return state();
   }
 
+  // Fitness = CUMULATIVE net P&L. Profit-per-100 normalizes away volume, so a
+  // verified-bad seller whose demand collapses would keep its old ratio and
+  // idle as a solvent zombie; cumulative P&L makes lost demand lost fitness.
+  // Per-100 stays a dashboard unit-economics metric only.
   function fitnessOf(id) {
-    if (fnPer100) {
-      const v = fnPer100(id);
-      if (Number.isFinite(Number(v))) return Number(v);
-    }
-    return num(fnPnl ? fnPnl(id) : 0, 0);
+    const v = fnPnl ? fnPnl(id) : 0;
+    if (Number.isFinite(Number(v))) return Number(v);
+    if (fnPer100) return num(fnPer100(id), 0);
+    return 0;
+  }
+
+  // Market-selected exit: at population cap the lowest-fitness LIVING variant
+  // is displaced by the incoming child. NEVER called a bankruptcy: the variant
+  // is solvent, the market just selected against it. Estate cause says so.
+  async function marketExit(id, rec) {
+    rec.alive = false;
+    rec.delist_reason = "market-selected exit: displaced by offspring at population cap";
+    const estate = {
+      variant_id: id,
+      genome: rec.genome,
+      born_at: new Date(rec.born_at).toISOString(),
+      died_at: new Date().toISOString(),
+      lifetime_ms: Date.now() - rec.born_at,
+      cause: "market_selected_exit",
+      stake_usd: rec.stake_usd,
+      final_pnl: rec.pnl,
+      final_bankroll: rec.bankroll,
+      fitness: rec.fitness,
+      requests: rec.requests,
+    };
+    await safe("registry.delist", pickFn(registry, ["delist"]), id, rec.delist_reason);
+    await safe("actian.writeEstate", actian.writeEstate, estate);
+    await emit({ type: "market_exit", variant_id: id, gen: rec.genome.gen, final_pnl: rec.pnl, reason: rec.delist_reason });
+    console.log(`[engine] MARKET EXIT ${id} gen=${rec.genome.gen} fitness=${rec.fitness.toFixed(4)} -> delisted (displaced at cap), estate written`);
   }
 
   async function insolvency(id, rec) {
@@ -186,9 +214,15 @@ export function createEngine(deps = {}, opts = {}) {
     if (breeding) return { bred: false, reason: "breed already in progress" };
     breeding = true;
     try {
-      const alive = [...pop.entries()].filter(([, r]) => r.alive);
+      let alive = [...pop.entries()].filter(([, r]) => r.alive);
       if (alive.length < 2) return { bred: false, reason: "need 2 living parents" };
-      if (alive.length >= cfg.maxPopulation) return { bred: false, reason: "population at cap" };
+      // At cap, evolution does not stall: the lowest-fitness living variant is
+      // displaced (market-selected exit) to make room for the child.
+      if (alive.length >= cfg.maxPopulation) {
+        const weakest = [...alive].sort((a, b) => a[1].fitness - b[1].fitness)[0];
+        await marketExit(weakest[0], weakest[1]);
+        alive = [...pop.entries()].filter(([, r]) => r.alive);
+      }
       const ranked = alive.sort((a, b) => b[1].fitness - a[1].fitness);
       const [aId, aRec] = ranked[0];
       const [bId, bRec] = ranked[1];
@@ -341,5 +375,32 @@ if (process.env.SELF_TEST) {
   const restored = await engine2.restore(snap);
   assert(restored.population.length === 4 && restored.alive === 3 && restored.generation === 1, "restore: 4 total, 3 alive, gen 1 (no gen-0 reseed)");
   assert(calls2.delist.length === 1 && calls2.delist[0].id === seeds[2].id, "restore re-delists the dead variant (route 410s)");
+
+  // Causal chain at cap: verified-bad seller -> demand collapses -> cumulative
+  // P&L (fitness) stalls below growing rivals -> displaced by the child at the
+  // population cap via market-selected exit (NOT called a bankruptcy).
+  const pnl3 = {};
+  const calls3 = { delist: [], emits: [] };
+  const engine3 = createEngine({
+    ...deps,
+    registry: { register: () => {}, delist: (id, reason) => calls3.delist.push({ id, reason }) },
+    ledger: { pnl: (id) => pnl3[id] ?? 0, requestCount: () => 5 },
+    band: { announce: () => {}, emit: (e) => calls3.emits.push(e.type) },
+  }, { forceLocalBreed: true, minParentRequests: 0, bankrollUsd: 0.25, maxPopulation: 3 });
+  const seeds3 = seedPopulation().slice(0, 3);
+  await engine3.seed(seeds3);
+  // zombie: early junk sales then verified-bad -> repurchases stop -> pnl frozen
+  // small; rivals keep earning volume.
+  pnl3[seeds3[0].id] = 0.002;
+  pnl3[seeds3[1].id] = 0.09;
+  pnl3[seeds3[2].id] = 0.06;
+  await engine3.evalTick();
+  const res3 = await engine3.breedTick();
+  assert(res3.bred === true, `cap breed proceeds via displacement: ${res3.reason || "ok"}`);
+  assert(calls3.delist.length === 1 && calls3.delist[0].id === seeds3[0].id, "lowest cumulative-P&L variant displaced at cap");
+  assert(/market-selected exit/.test(calls3.delist[0].reason) && !/insolvent/.test(calls3.delist[0].reason), "displacement labeled market-selected exit, not bankruptcy");
+  assert(calls3.emits.includes("market_exit"), "market_exit event emitted");
+  const st3 = engine3.state();
+  assert(st3.alive === 3 && st3.dead === 1, "population back at cap after displacement + child");
   console.log("engine.js SELF_TEST OK:", { generation: st.generation, alive: st.alive, dead: st.dead, child: res.child.id, clusters: res.failureClusters, restored: { alive: restored.alive, generation: restored.generation } });
 }
