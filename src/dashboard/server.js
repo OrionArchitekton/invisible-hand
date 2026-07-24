@@ -260,7 +260,10 @@ export function buildModel(inputs = {}) {
     // evalTick skips them, so /state can report a full green bankroll on a
     // BANKRUPT row (judge-visible contradiction). balance = stake + pnl.
     if (a.entries.length) {
-      v.bankroll_usd = a.balance;
+      // balance already includes the stake when the ledger recorded a stake
+      // credit; otherwise the stake lives engine-side, so add it back to get
+      // the true economic bankroll (stake + pnl), never bare pnl.
+      v.bankroll_usd = a.stakeTotal > 0 ? a.balance : (v.stake_usd ?? stakeDefault) + a.balance;
     } else if (v.bankroll_usd === null) {
       v.bankroll_usd = v.statePnl !== null && v.stake_usd !== null ? v.stake_usd + v.statePnl : null;
     }
@@ -792,10 +795,13 @@ if (process.env.SELF_TEST) {
       // Regression P0-1: restored dead variant whose /state bankroll was
       // re-staked at face value while the ledger says it is underwater.
       { id: 'v-stale-bankroll', gen: 0, model: 'm', price_usd: 0.01, alive: false, bankroll: 0.25, stake_usd: 0.25, delist_reason: 'insolvent: bankroll exhausted' },
+      // Live shape: stake never hits the ledger (engine-side), entries are pnl only.
+      { id: 'v-stakeless', gen: 0, model: 'm', price_usd: 0.01, alive: false, bankroll: 0.25, stake_usd: 0.25, delist_reason: 'insolvent: bankroll exhausted' },
     ] },
     ledger: [null, { id: 'v-unmatched', type: 'credit', usd: 0.01 }, 'not-an-object',
       { id: 'v-stale-bankroll', type: 'credit', usd: 0.25, reason: 'stake' },
-      { id: 'v-stale-bankroll', type: 'debit', usd: 0.2708, reason: 'inference cost' }],
+      { id: 'v-stale-bankroll', type: 'debit', usd: 0.2708, reason: 'inference cost' },
+      { id: 'v-stakeless', type: 'debit', usd: 0.2708, reason: 'inference cost' }],
     mesh: [null, { type: 'announce', variant: 'v-restored' }],
     failures: [null], receipts: [null],
   });
@@ -814,8 +820,9 @@ if (process.env.SELF_TEST) {
     ['html has testnet honesty label', html.includes('TESTNET')],
     ['no long dashes', !/[\u2013\u2014\u2015]/.test(html)],
     ['empty inputs do not crash', renderPage(buildModel({})).includes('no variants yet')],
-    ['null state row dropped, not crashed', hostile.variants.length === 5],
+    ['null state row dropped, not crashed', hostile.variants.length === 6],
     ['ledger truth overrides stale restored bankroll', Math.abs(hostile.variants.find((v) => v.id === 'v-stale-bankroll').bankroll_usd - (-0.0208)) < 1e-9],
+    ['stakeless ledger adds engine-side stake back', Math.abs(hostile.variants.find((v) => v.id === 'v-stakeless').bankroll_usd - (-0.0208)) < 1e-9],
     ['restored variant pnl from engine (no ledger)', hostile.variants.find((v) => v.id === 'v-restored')?.pnl === 0.07],
     ['alive:false maps to bankrupt', hostile.variants.find((v) => v.id === 'v-dead')?.status === 'BANKRUPT'],
     ['XSS model string escaped in html', !hostileHtml.includes('<script>x</script>') && hostileHtml.includes('&lt;script&gt;')],
