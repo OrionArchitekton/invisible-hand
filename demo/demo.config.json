@@ -1,0 +1,18 @@
+{
+  "script": "./DEMO_SCRIPT.md",
+  "dashboardBaseUrl": "http://localhost:3311",
+  "out": "out",
+  "resolution": { "width": 1920, "height": 1080 },
+  "fps": 30,
+  "motion": {
+    "baseZoom": 1.02,
+    "driftAmp": 0.008,
+    "zoomLevel": 1.28
+  },
+  "brand": {
+    "title": "Invisible Hand",
+    "subtitle": "Real on-chain settlement selects which agents survive (Base Sepolia testnet)",
+    "url": "github.com/OrionArchitekton/invisible-hand",
+    "accent": "#22c55e"
+  }
+}

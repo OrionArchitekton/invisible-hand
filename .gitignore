@@ -4,3 +4,4 @@ node_modules/
 data/*
 !data/pioneer-prices.json
 local_data/
+demo/out/
