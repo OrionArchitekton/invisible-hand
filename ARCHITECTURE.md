@@ -1,4 +1,4 @@
-# Invisible Hand — architecture contract (SwarmHack 2026-07-24)
+# Invisible Hand: architecture contract (SwarmHack 2026-07-24)
 
 An agent economy where natural selection is enforced by real money. A population of
 seller-agent variants sells structured extraction over live web content behind x402
@@ -83,3 +83,23 @@ verification rejects; re-purchases stop; balance crosses cost line. 1:45 bankrup
 delist fires, curl 410 on stage; estate written; parents breed; child lands first paid
 request. 2:30 close: profit-per-100 curve up across generations, verified accuracy up,
 unit cost down, one governance block trace, explorer left open.
+
+## VERIFIED integration facts (live-probed 07-24 ~11:30; code against THESE)
+
+- Runtime env chain: `doppler run -p swarm-hack -c prd -- doppler run -p claude-code-use -c prd -- node ...`
+  (swarm-hack/prd holds PIONEER_API_KEY + BAND_API_KEY; claude-code-use/prd holds GEMINI_API_KEY).
+- Pioneer: base `https://api.pioneer.ai/v1`, OpenAI-compatible, `Authorization: Bearer $PIONEER_API_KEY`.
+  165 models live; router id is `pioneer/auto` (also `anthropic/pioneer-auto`); frontier ids like
+  `claude-sonnet-4-5`, plus open models. /models returns the list (verified HTTP 200).
+- BAND (VERIFIED end-to-end): human key = $BAND_API_KEY. Mint agents:
+  `POST https://app.band.ai/api/v1/me/agents/register` body `{"agent":{"name","description"}}`,
+  X-API-Key header -> 201 with `data.credentials.api_key` (shown ONCE). Agent API base
+  `https://app.band.ai/api/v1/agent/*` with the AGENT key in X-API-Key (verified 200 on /agent/chats).
+  Probe agent `ih-probe` credentials already saved at data/band-agents.json (gitignored, mode 600) -
+  reuse it or mint per-role agents at boot. Human chat endpoints (/me/chats) are Enterprise-gated:
+  do NOT use them. Websocket: wss://app.band.ai/api/v1/socket/websocket.
+- Guild: CLI v0.17.0 on PATH but UNAUTHENTICATED on this box (expects ~/.guild/config.json; auth
+  pending from operator laptop). guild.js stays in local policy mode until GUILD_CONFIG_JSON lands;
+  then `guild --mode json api <METHOD> <path>` becomes available for real registration of decisions.
+- Treasury: data/keys.json holds {treasury:{privateKey,address}}; address
+  0xd2bA23040cCB33Ed6eB9Bc53ec148BCF064333a8; faucet funding pending (x402 402-challenge works unfunded).

@@ -1,0 +1,23 @@
+{
+  "_meta": {
+    "unit": "usd_per_1M_tokens",
+    "as_of": "2026-07-24",
+    "estimate": true,
+    "note": "ROUGH ESTIMATES for seller cost modeling only. Pioneer bills via platform credits and does not publish a per-model per-token price sheet; these numbers are public list-price analogues for the underlying models (router candidate pool per docs.pioneer.ai/concepts/router). Verify live per-model cost on the Pioneer console (agent.pioneer.ai) when usage data is available.",
+    "fields": "input = prompt tokens, output = completion tokens, both USD per 1M tokens"
+  },
+  "models": {
+    "pioneer/auto": { "input": 0.5, "output": 2.0, "estimate": true, "note": "blended estimate for the Pioneer Model Router; routes to the cheapest candidate that clears the quality bar, so realized cost is workload-dependent and usually below frontier list price" },
+    "fastino/gliner2-base-v1": { "input": 0.05, "output": 0.05, "estimate": true, "note": "small encoder extraction model; near-negligible per-call cost" },
+    "Qwen/Qwen3-8B": { "input": 0.06, "output": 0.24, "estimate": true, "note": "open 8B decoder, typical hosted open-model rate" },
+    "deepseek/deepseek-v4-flash": { "input": 0.1, "output": 0.4, "estimate": true, "note": "router candidate (DeepSeek V4 Flash)" },
+    "deepseek/deepseek-v4-pro": { "input": 0.6, "output": 2.2, "estimate": true, "note": "router candidate (DeepSeek V4 Pro)" },
+    "zhipuai/glm-5.2": { "input": 0.6, "output": 2.2, "estimate": true, "note": "router candidate (GLM 5.2)" },
+    "openai/gpt-5.5": { "input": 1.25, "output": 10.0, "estimate": true, "note": "router candidate (GPT-5.5), OpenAI list-price analogue" },
+    "anthropic/claude-sonnet-4.6": { "input": 3.0, "output": 15.0, "estimate": true, "note": "router candidate (Claude Sonnet 4.6), Anthropic list-price analogue" },
+    "anthropic/claude-opus-4.7": { "input": 5.0, "output": 25.0, "estimate": true, "note": "router candidate (Claude Opus 4.7), Anthropic list-price analogue" },
+    "models/gemini-3.1-flash": { "input": 0.3, "output": 2.5, "estimate": true, "note": "Gemini fallback path when PIONEER_API_KEY is absent; Google Flash-tier list-price analogue" },
+    "local-mode-extractor": { "input": 0.0, "output": 0.0, "estimate": false, "note": "no API key present; heuristic local extraction, zero inference cost" },
+    "default": { "input": 1.0, "output": 4.0, "estimate": true, "note": "fallback for unknown model ids" }
+  }
+}
