@@ -69,7 +69,7 @@ export function createEngine(deps = {}, opts = {}) {
     return safe("band.emit", pickFn(band, ["emit"]), { ts: new Date().toISOString(), ...event });
   }
 
-  async function addVariant(genome, { announce = true, isChild = false } = {}) {
+  async function addVariant(genome, { announce = true, isChild = false, restored = false } = {}) {
     const rec = {
       genome,
       stake_usd: cfg.bankrollUsd,
@@ -95,12 +95,42 @@ export function createEngine(deps = {}, opts = {}) {
     await safe("actian.upsertGenome", actian.upsertGenome, genome);
     pop.set(genome.id, rec);
     if (announce) await safe("band.announce", pickFn(band, ["announce"]), genome);
-    await emit({ type: isChild ? "child_born" : "variant_seeded", variant_id: genome.id, gen: genome.gen, parent_ids: genome.parent_ids, price_usd: genome.price_usd, model: genome.model });
+    if (!restored) await emit({ type: isChild ? "child_born" : "variant_seeded", variant_id: genome.id, gen: genome.gen, parent_ids: genome.parent_ids, price_usd: genome.price_usd, model: genome.model });
     return rec;
   }
 
   async function seed(genomes) {
     for (const g of genomes) await addVariant(g, { isChild: false });
+    return state();
+  }
+
+  // Durable population state for restart-without-reseed. P&L is NOT stored:
+  // it lives in the file-backed ledger and recomputes on the next evalTick.
+  function snapshot() {
+    return [...pop.values()].map((r) => ({
+      genome: r.genome,
+      stake_usd: r.stake_usd,
+      alive: r.alive,
+      born_at: r.born_at,
+      delist_reason: r.delist_reason,
+    }));
+  }
+
+  // Rebuild the population from a snapshot: living variants re-register their
+  // paid routes (wallets reuse by id), delisted ones re-register then delist so
+  // their routes still 410 with the original reason. No announce/seed events.
+  async function restore(records) {
+    for (const r of records) {
+      if (!r || !r.genome || !r.genome.id) continue;
+      const rec = await addVariant(r.genome, { announce: false, isChild: false, restored: true });
+      if (Number.isFinite(r.stake_usd)) rec.stake_usd = r.stake_usd;
+      if (Number.isFinite(r.born_at)) rec.born_at = r.born_at;
+      if (r.alive === false) {
+        rec.alive = false;
+        rec.delist_reason = r.delist_reason || "restored: delisted in prior run";
+        await safe("registry.delist", pickFn(registry, ["delist"]), r.genome.id, rec.delist_reason);
+      }
+    }
     return state();
   }
 
@@ -237,7 +267,7 @@ export function createEngine(deps = {}, opts = {}) {
     timers = [];
   }
 
-  return { seed, addVariant, evalTick, breedTick, state, start, stop, config: cfg };
+  return { seed, snapshot, restore, addVariant, evalTick, breedTick, state, start, stop, config: cfg };
 }
 
 // ---------------------------------------------------------------------------
@@ -296,5 +326,20 @@ if (process.env.SELF_TEST) {
   assert(calls.gate.length === 1, "guild gate consulted");
   const st = engine.state();
   assert(st.population.length === 4 && st.alive === 3 && st.generation === 1, "state: 4 total, 3 alive, gen 1");
-  console.log("engine.js SELF_TEST OK:", { generation: st.generation, alive: st.alive, dead: st.dead, child: res.child.id, clusters: res.failureClusters });
+
+  // snapshot -> restore into a FRESH engine must preserve gen, liveness, and delists.
+  const snap = engine.snapshot();
+  assert(snap.length === 4 && snap.filter((r) => r.alive).length === 3, "snapshot carries 4 records, 3 alive");
+  const calls2 = { register: [], delist: [] };
+  const engine2 = createEngine({
+    ...deps,
+    registry: {
+      register: (v) => calls2.register.push(v.id),
+      delist: (id, reason) => calls2.delist.push({ id, reason }),
+    },
+  }, { forceLocalBreed: true, minParentRequests: 0, bankrollUsd: 0.25 });
+  const restored = await engine2.restore(snap);
+  assert(restored.population.length === 4 && restored.alive === 3 && restored.generation === 1, "restore: 4 total, 3 alive, gen 1 (no gen-0 reseed)");
+  assert(calls2.delist.length === 1 && calls2.delist[0].id === seeds[2].id, "restore re-delists the dead variant (route 410s)");
+  console.log("engine.js SELF_TEST OK:", { generation: st.generation, alive: st.alive, dead: st.dead, child: res.child.id, clusters: res.failureClusters, restored: { alive: restored.alive, generation: restored.generation } });
 }

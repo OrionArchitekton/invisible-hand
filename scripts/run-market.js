@@ -18,6 +18,9 @@
 //   - fleet wants variant.endpoint; registry publicView carries route only.
 
 import express from 'express';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { createRegistry } from '../src/market/registry.js';
 import * as ledgerMod from '../src/market/ledger.js';
 import {
@@ -86,9 +89,35 @@ async function main() {
     actian,
   });
 
-  // 5) Seed population: 6 variants, gen 0 (wallet + register + announce each).
-  const seeded = await engine.seed(seedPopulation());
-  console.log(`[run-market] seeded ${seeded.alive} variants at generation ${seeded.generation}`);
+  // 5) Population: resume from the last snapshot when one exists (restarts must
+  //    not reset evolution to gen 0), else seed 6 fresh gen-0 variants.
+  const POP_SNAPSHOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../data/population.json');
+  let priorPop = null;
+  try {
+    const parsed = JSON.parse(fs.readFileSync(POP_SNAPSHOT, 'utf8'));
+    if (Array.isArray(parsed) && parsed.length) priorPop = parsed;
+  } catch { /* no snapshot yet -> fresh seed */ }
+  let seeded;
+  if (priorPop) {
+    seeded = await engine.restore(priorPop);
+    console.log(`[run-market] RESUMED population from snapshot: gen ${seeded.generation}, ${seeded.alive} alive, ${seeded.dead} delisted`);
+  } else {
+    seeded = await engine.seed(seedPopulation());
+    console.log(`[run-market] seeded ${seeded.alive} variants at generation ${seeded.generation}`);
+  }
+
+  // Persist the population atomically (tmp+rename) every 15s and on shutdown.
+  const writeSnapshot = () => {
+    try {
+      const tmp = `${POP_SNAPSHOT}.tmp`;
+      fs.writeFileSync(tmp, JSON.stringify(engine.snapshot(), null, 2));
+      fs.renameSync(tmp, POP_SNAPSHOT);
+    } catch (err) {
+      console.warn(`[run-market] population snapshot write failed: ${err.message}`);
+    }
+  };
+  const snapTimer = setInterval(writeSnapshot, 15_000);
+  snapTimer.unref?.();
 
   // 6) /state endpoint the dashboard polls (engine truth wins over file estimates).
   const stateApp = express();
@@ -169,6 +198,7 @@ async function main() {
     if (shuttingDown) return;
     shuttingDown = true;
     console.log(`[run-market] ${signal}: shutting down`);
+    try { clearInterval(snapTimer); writeSnapshot(); } catch { /* best effort */ }
     try { fleet.stop(); } catch { /* best effort */ }
     try { engine.stop(); } catch { /* best effort */ }
     try { registry.close(); } catch { /* best effort */ }

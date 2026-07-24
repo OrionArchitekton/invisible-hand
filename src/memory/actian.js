@@ -242,7 +242,9 @@ export function createActian(opts = {}) {
   // their failures, group by normalized reason, return the top clusters as
   // human-readable strings for prompt injection (inherited immunity).
   async function getFailureClusters(variantIds, { limit = 4 } = {}) {
-    await ingestFailuresFile().catch(() => {});
+    // persistLocal:false marks a hermetic client (self-tests): no disk ingest,
+    // or the live market's failures.jsonl bleeds into isolated assertions.
+    if (persistLocal) await ingestFailuresFile().catch(() => {});
     const idSet = new Set(variantIds);
     let rows = [];
     if (mode !== "local") {
