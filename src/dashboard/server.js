@@ -589,6 +589,12 @@ export function renderPage(model, { staticPage = false } = {}) {
   .panel { background: #131826; border: 1px solid #1f2637; border-radius: 10px; padding: 14px 16px; overflow-x: auto; min-width: 0; }
   td.model { max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   @media (max-width: 640px) { td.model { max-width: 120px; } }
+  /* Replay QA round 2: content-driven column widths shifted interactive addr
+     links 50px on data load and oscillated 225px across the 5s swap. Fixed
+     layout + colgroup makes geometry content-independent; the panel's own
+     overflow-x carries the constant width on narrow screens. */
+  table.poptable { table-layout: fixed; min-width: 1160px; }
+  table.poptable td { overflow: hidden; text-overflow: ellipsis; }
   .panel h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 1.5px; color: #9ca3af; margin-bottom: 10px; }
   table { border-collapse: collapse; width: 100%; font-size: 13px; }
   th { text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #6b7280; padding: 6px 8px; border-bottom: 1px solid #1f2637; }
@@ -660,7 +666,12 @@ export function renderPage(model, { staticPage = false } = {}) {
   <div class="grid">
     <div class="panel" id="population-panel">
       <h2>Population</h2>
-      <table>
+      <table class="poptable">
+        <colgroup>
+          <col style="width:120px"><col style="width:44px"><col style="width:200px"><col style="width:84px">
+          <col style="width:90px"><col style="width:96px"><col style="width:160px">
+          <col style="width:170px"><col style="width:116px"><col style="width:80px">
+        </colgroup>
         <thead><tr>
           <th>Variant</th><th class="center">Gen</th><th>Model</th><th>Price</th>
           <th>P/100 req</th><th class="center">Verified acc</th><th>P&amp;L spark</th>
@@ -884,6 +895,9 @@ if (process.env.SELF_TEST) {
     ['refresh defers during interaction', html.includes('lastInteraction') && html.includes("sel.type === 'Range'")],
     ['receipts strip computed', model.receiptsStrip.x402.txCount === 1 && model.receiptsStrip.gemini.total === 2],
     ['receipts panel rendered without undefined', html.includes('Integration receipts') && !renderPage(model).match(/receipts-panel[\s\S]{0,2500}undefined/)],
+    // Replay QA round 2 regression: population table geometry must be
+    // content-independent (fixed layout + explicit colgroup).
+    ['population table has fixed layout', html.includes('table-layout: fixed') && html.includes('<colgroup>')],
   ];
   let failed = 0;
   for (const [name, ok] of checks) {
