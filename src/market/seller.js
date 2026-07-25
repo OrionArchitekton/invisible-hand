@@ -31,7 +31,7 @@ export function loadPriceTable() {
   return priceTable;
 }
 
-function priceFor(model) {
+export function priceFor(model) {
   const table = loadPriceTable();
   const models = table.models || {};
   const key = Object.keys(models).find((k) => k.toLowerCase() === String(model || '').toLowerCase());
@@ -424,15 +424,23 @@ if (process.env.SELF_TEST) {
   delete process.env.SELF_TEST;
   const { MODEL_POOL } = await import('../evolution/genome.js');
   if (savedST !== undefined) process.env.SELF_TEST = savedST;
+  // Assert on what priceFor() actually RESOLVES, not on key existence. A key can be
+  // present with a falsy or unusable value ({}, null, non-numeric), and `models[key] ||
+  // models.default` still falls through to the default, so a key-presence check would
+  // pass while the invariant this guard documents is broken.
   const rows = loadPriceTable().models || {};
-  const unpriced = MODEL_POOL.filter(
-    (m) => !Object.keys(rows).some((k) => k.toLowerCase() === String(m).toLowerCase()),
-  );
-  if (unpriced.length) {
-    console.error('[seller self-test] PRICE COVERAGE FAIL: MODEL_POOL ids with no explicit price row, so they silently bill at the default:', unpriced.join(', '));
+  const bad = [];
+  for (const m of MODEL_POOL) {
+    const row = priceFor(m);
+    if (rows.default && row === rows.default) { bad.push(`${m} (resolved to the default row)`); continue; }
+    if (!Number.isFinite(row?.input) || !Number.isFinite(row?.output)) { bad.push(`${m} (row has non-numeric input/output)`); continue; }
+    if (row.input < 0 || row.output < 0) bad.push(`${m} (negative price)`);
+  }
+  if (bad.length) {
+    console.error('[seller self-test] PRICE COVERAGE FAIL: MODEL_POOL ids that do not resolve to a usable explicit price row, so they silently bill at the default:', bad.join('; '));
     process.exit(1);
   }
-  console.log(`[seller self-test] price coverage OK (${MODEL_POOL.length} MODEL_POOL ids, 0 falling through to default)`);
+  console.log(`[seller self-test] price coverage OK (${MODEL_POOL.length} MODEL_POOL ids resolve to explicit usable rows, 0 falling through to default)`);
   const savedP = process.env.PIONEER_API_KEY;
   const savedG = process.env.GEMINI_API_KEY;
   delete process.env.PIONEER_API_KEY;
