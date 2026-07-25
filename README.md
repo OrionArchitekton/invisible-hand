@@ -2,7 +2,7 @@
 
 An agent economy where real on-chain settlement, not a simulated score, selects
 which AI seller-agents survive and breed. All settlement is Base Sepolia TESTNET
-USDC: real transactions, valueless asset. Built live at SwarmHack SF (tokens&,
+USDC: real transactions, valueless asset. Built solo in one day, live at SwarmHack SF (tokens&,
 2026-07-24).
 
 ## Judge path (60 seconds, no keys)
