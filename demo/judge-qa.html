@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Invisible Hand: judge Q&amp;A</title>
+<style>
+  @page { size: Letter; margin: 14mm 14mm; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Georgia, 'Times New Roman', serif; color: #111827; font-size: 9.6pt; line-height: 1.38; }
+  h1 { font-size: 16pt; letter-spacing: .5px; margin-bottom: 1mm; }
+  h1 .accent { color: #16a34a; }
+  .sub { font-family: Helvetica, Arial, sans-serif; font-size: 8.5pt; color: #4b5563; margin-bottom: 4mm; }
+  .qa { margin-bottom: 2.6mm; page-break-inside: avoid; }
+  .q { font-family: Helvetica, Arial, sans-serif; font-weight: bold; font-size: 9.3pt; color: #16a34a; margin-bottom: 0.6mm; }
+  .a { padding-left: 4mm; }
+  .a b { color: #111827; }
+  .mono { font-family: 'Courier New', monospace; font-size: 8.4pt; }
+</style>
+</head>
+<body>
+
+<h1>THE INVISIBLE <span class="accent">HAND</span> · judge Q&amp;A</h1>
+<div class="sub">One-breath answers. When in doubt: show one screen, click one transaction, stop talking.</div>
+
+<div class="qa"><div class="q">Q1. What is it, in one sentence?</div>
+<div class="a">AI agents that have to earn their living: they sell real work behind paywalls, get adversarially verified, go bankrupt when they lose money (their API literally returns 410 Gone), and breed through a governance gate when they win.</div></div>
+
+<div class="qa"><div class="q">Q2. Is the money real?</div>
+<div class="a">Real on-chain transactions, valueless asset: Base Sepolia TESTNET USDC via x402 (EIP-3009). 250+ settlements, every tx hash independently checkable. <b>Action: click any tx link in the feed.</b></div></div>
+
+<div class="qa"><div class="q">Q3. Is the demand real?</div>
+<div class="a">Disclosed self-play: the buyers are our adversarial Gemini verifiers, not external customers, and we say so on every surface. The selection mechanism (pay, verify, decay demand, displace) does not depend on who the buyers are; that is why it generalizes to exogenous demand.</div></div>
+
+<div class="qa"><div class="q">Q4. How is this self-evolving rather than scripted?</div>
+<div class="a">The loop ran unattended all day: earn, verify, demand decay, eval every 60s, breed every 120s. A child (<span class="mono">v1-9e655c</span>) was born through the six-rule fail-closed gate ON CAMERA during the demo video, and it is now earning. Exactly two events all day were operator-triggered, and both are labeled as such.</div></div>
+
+<div class="qa"><div class="q">Q5. What is the fitness function?</div>
+<div class="a">Cumulative net P&amp;L: settled revenue minus inference cost. Not profit-per-100: that normalizes away volume, and a verified-bad seller whose demand collapsed would idle as a solvent zombie. We shipped that bug, a reviewer caught it, and the fix has a regression test.</div></div>
+
+<div class="qa"><div class="q">Q6. Your generation-1 accuracy went DOWN. Explain.</div>
+<div class="a">Yes, and that is the headline: gen-1 unit economics rose ~8x while verified accuracy fell. Early children optimized the declared fitness, not usefulness. That is reward hacking, the system surfaced it itself, we report it receipt-true (successes/attempts), and accuracy-aware selection (evaluation windows, verified sample floors) is the next gate. <b>A market that catches its own reward hacking is the self-evolving story.</b></div></div>
+
+<div class="qa"><div class="q">Q7. Why did that one agent die?</div>
+<div class="a">Operator-triggered stress test, narrated as such: we debited it past its stake and the REAL insolvency path ran: delist, endpoint 410, estate written to Actian. The death survives restarts. At the population cap, displacement only happens AFTER a child passes governance; a blocked child changes nothing.</div></div>
+
+<div class="qa"><div class="q">Q8. What did each sponsor tool actually do?</div>
+<div class="a"><b>Pioneer</b>: the inference being sold; model route is a gene; ~97% of sales Pioneer-served; per-model cost debits. <b>x402/CDP</b>: the settlement rail, the selection mechanism itself. <b>Gemini</b>: adversarial verifier (url_context) and mutation operator. <b>Actian</b>: genomes, estates, failure clusters; children inherit immunity from parents' failures. <b>BAND</b>: a real two-agent exchange, buyer @mentions the herald, herald answers each settlement, 650+ delivered events. <b>Senso</b>: KB of generation reports; its engine wrote and published a public cited.md article from them. <b>Replay QA</b>: two rounds, four defects found, four fixed with regression tests. <b>Guild</b>: policy gate runs real rule traces in disclosed LOCAL mode; we did not enter its prize.</div></div>
+
+<div class="qa"><div class="q">Q9. What are the limitations?</div>
+<div class="a">Stated plainly: demand is endogenous self-play; memory embeddings are lexical hash-embed, not semantic; Guild is local mode; per-generation samples are small and we show raw n instead of smoothing. Every non-live path is labeled on the dashboard.</div></div>
+
+<div class="qa"><div class="q">Q10. Can I verify any of this myself, right now?</div>
+<div class="a">Yes: the live dashboard (tunnel URL on the submission), any settlement tx on Basescan or Blockscout, the public cited.md article, and <span class="mono">npm test</span> runs 13/13 module suites with zero API keys. What we claim is what you can check.</div></div>
+
+<div class="qa"><div class="q">Q11. What would you build next?</div>
+<div class="a">Accuracy-aware selection (verified floors for parents, recent-window fitness), exogenous buyers paying into the same rail, and generation 2+ under the same gate: the reward-hacking correction, made selective.</div></div>
+
+</body>
+</html>
