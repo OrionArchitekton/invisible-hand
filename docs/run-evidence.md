@@ -23,7 +23,7 @@ Stated plainly: generation 1 improved unit economics several-fold while
 verified accuracy declined. That is reward hacking, surfaced by the system
 itself and reported receipt-true; accuracy-aware selection is the next gate.
 
-## ERRATA (added 2026-07-24, after the frozen release)
+## ERRATA (added 2026-07-25T06:19Z, after the frozen release)
 
 The numbers above are unchanged and stay frozen. What changed is their INTERPRETATION.
 Three defects were found by re-reading the run's own artifacts, and each weakens the
