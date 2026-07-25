@@ -204,6 +204,21 @@ async function main() {
         registry: fleetRegistry,
         account: getTreasuryAccount(),
         tracker: fleet.tracker,
+        // Same mesh forwarding as the autonomous fleet, so demo buys show up
+        // as buy_order/settlement lines in the feed and the BAND room.
+        onEvent: (event) => {
+          try {
+            if (event.type === 'buy_order') {
+              band.buyOrder({ url: event.task_url, seller_id: event.variant_id, price_usd: event.price })
+                .catch((e) => console.warn(`[run-market] demo mesh buyOrder failed: ${e.message}`));
+            } else if (event.type === 'receipt' && event.tx_hash) {
+              band.emit({ type: 'settlement', variant_id: event.variant_id, price_usd: event.price, tx_hash: event.tx_hash, task_url: event.task_url, verified: event.verified })
+                .catch((e) => console.warn(`[run-market] demo mesh settlement failed: ${e.message}`));
+            }
+          } catch (err) {
+            console.warn(`[run-market] demo onEvent failed: ${err.message}`);
+          }
+        },
         ...(url ? { task: { url, title: 'judge-picked article' } } : {}),
       });
       res.json({ ok: !receipt?.skipped, receipt });
