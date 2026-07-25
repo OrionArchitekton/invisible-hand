@@ -413,6 +413,26 @@ if (process.env.SELF_TEST) {
   passert(parseClaimsJson('[{"text":"First complete claim.","source_url":"http://x","confidence":1},{"text":"Second complete claim.","source_url":"http://x","confidence":0.8},{"text":"Truncated cl', 'u').length === 2, 'truncated array salvages complete claims');
   passert(parseClaimsJson('{"claims":[{"text":"Wrapped then truncated.","source_url":"http://x","confidence":1},{"text":"Cut off he', 'u').length === 1, 'truncated wrapped object salvages complete claims');
   console.log('[seller self-test] parser robustness OK (10 cases)');
+  // Price coverage: every genome-selectable model must resolve to an EXPLICIT row.
+  // priceFor() falls back to `default` ($1.00/$4.00) for an unknown id, which misprices
+  // cost and therefore profit with no error and no log line. Four of six MODEL_POOL ids
+  // did exactly that through the v1.0-swarmhack run (docs/run-evidence.md ERRATA), one
+  // of them only because MODEL_POOL says zai-org/GLM-5.2 while the table said
+  // zhipuai/glm-5.2. Import with SELF_TEST cleared so genome.js does not run its own
+  // suite here and report a genome failure as a seller failure.
+  const savedST = process.env.SELF_TEST;
+  delete process.env.SELF_TEST;
+  const { MODEL_POOL } = await import('../evolution/genome.js');
+  if (savedST !== undefined) process.env.SELF_TEST = savedST;
+  const rows = loadPriceTable().models || {};
+  const unpriced = MODEL_POOL.filter(
+    (m) => !Object.keys(rows).some((k) => k.toLowerCase() === String(m).toLowerCase()),
+  );
+  if (unpriced.length) {
+    console.error('[seller self-test] PRICE COVERAGE FAIL: MODEL_POOL ids with no explicit price row, so they silently bill at the default:', unpriced.join(', '));
+    process.exit(1);
+  }
+  console.log(`[seller self-test] price coverage OK (${MODEL_POOL.length} MODEL_POOL ids, 0 falling through to default)`);
   const savedP = process.env.PIONEER_API_KEY;
   const savedG = process.env.GEMINI_API_KEY;
   delete process.env.PIONEER_API_KEY;
