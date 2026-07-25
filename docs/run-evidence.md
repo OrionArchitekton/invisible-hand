@@ -1,33 +1,30 @@
-# Run evidence (frozen snapshot for async judging)
+# Run evidence (frozen at the v1.0-swarmhack release)
 
-Captured 2026-07-24T21:25:46Z from the live market. Raw counts, no smoothing; the live
-dashboard is authoritative whenever the market is up. All USDC is Base
-Sepolia TESTNET; demand is disclosed adversarial self-play.
+Captured 2026-07-25T02:56:48Z, end of the SwarmHack event day. Raw counts, no smoothing.
+All USDC is Base Sepolia TESTNET; demand is disclosed adversarial self-play.
 
-- On-chain settlements with tx hashes in the ledger: 251
-- First and latest settlement tx: 0x4e1b80cfab76f9e30bf7695854bbe4c1183edc516b6d1b900fdef80234545df1 and 0x21413d458e8da390b52e4d2798c7b16fd6164674076b759390fa5b40674c2654
-- Verification receipts: 154/280 verified successes/attempts; 196 failure records
-- Pioneer inference debits: 207 (plus 71 labeled Gemini fallbacks)
-- BAND: 658 events delivered to the two-agent room; 674 mesh events recorded overall
+- On-chain settlements with tx hashes in the ledger: 731
+- First and latest settlement tx: 0x4e1b80cfab76f9e30bf7695854bbe4c1183edc516b6d1b900fdef80234545df1 and 0xd60cc4059f9255009a1cb017a4d264413b92116c7c4dca95859d2f1bc7471de5
+- Verification receipts: 392/798 verified successes/attempts; 802 failure records
+- Pioneer inference debits: 698 (plus 83 labeled Gemini fallbacks)
+- BAND: 1814 events delivered to the two-agent room; 1830 mesh events recorded
 - Population: generation 1, 8 alive, 1 delisted
-- Governed evolution during the run: child v1-9e655c bred through the six-rule gate after the spend-cap accounting fix (live-capital basis, trace names it)
+- Governed birth during the recorded demo: child v1-9e655c through the six-rule gate
 - Actian mode: live | Guild: honest local policy mode
 
 ## Evolution by generation (raw; accuracy = verified successes/attempts)
 
 | gen | alive/total | sales n | mean profit per 100 | verified acc (ok/attempts) |
 |---|---|---|---|---|
-| 0 | 5/6 | 189 | $0.087 | 56% (120/215) |
-| 1 | 3/3 | 35 | $0.619 | 41% (16/39) |
+| 0 | 5/6 | 451 | $0.098 | 51% (257/501) |
+| 1 | 3/3 | 253 | $0.681 | 43% (117/271) |
 
-Stated plainly: generation 1 improved unit economics while verified
-accuracy declined. That is reward hacking, surfaced by the system itself,
-and it is the next selective pressure (evaluation windows and verified
-sample floors are now part of displacement rules).
+Stated plainly: generation 1 improved unit economics several-fold while
+verified accuracy declined. That is reward hacking, surfaced by the system
+itself and reported receipt-true; accuracy-aware selection is the next gate.
 
-## Verify live yourself
+## Verify
 
-- Any settlement tx above on https://sepolia.basescan.org/tx/<hash> or https://base-sepolia.blockscout.com/tx/<hash>
+- Any tx above: https://sepolia.basescan.org/tx/<hash> or https://base-sepolia.blockscout.com/tx/<hash>
 - Treasury: https://sepolia.basescan.org/address/0xd2bA23040cCB33Ed6eB9Bc53ec148BCF064333a8
-  (payer via EIP-3009 facilitator settlement; check tx logs, not EOA nonce)
 - Public Senso-generated artifact: https://cited.md/article/what-is-the-invisible-hand-agent-economy-and-how-does-real-on-chain
