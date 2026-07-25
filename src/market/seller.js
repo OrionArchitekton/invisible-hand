@@ -31,7 +31,7 @@ export function loadPriceTable() {
   return priceTable;
 }
 
-function priceFor(model) {
+export function priceFor(model) {
   const table = loadPriceTable();
   const models = table.models || {};
   const key = Object.keys(models).find((k) => k.toLowerCase() === String(model || '').toLowerCase());
@@ -413,6 +413,34 @@ if (process.env.SELF_TEST) {
   passert(parseClaimsJson('[{"text":"First complete claim.","source_url":"http://x","confidence":1},{"text":"Second complete claim.","source_url":"http://x","confidence":0.8},{"text":"Truncated cl', 'u').length === 2, 'truncated array salvages complete claims');
   passert(parseClaimsJson('{"claims":[{"text":"Wrapped then truncated.","source_url":"http://x","confidence":1},{"text":"Cut off he', 'u').length === 1, 'truncated wrapped object salvages complete claims');
   console.log('[seller self-test] parser robustness OK (10 cases)');
+  // Price coverage: every genome-selectable model must resolve to an EXPLICIT row.
+  // priceFor() falls back to `default` ($1.00/$4.00) for an unknown id, which misprices
+  // cost and therefore profit with no error and no log line. Four of six MODEL_POOL ids
+  // did exactly that through the v1.0-swarmhack run (docs/run-evidence.md ERRATA), one
+  // of them only because MODEL_POOL says zai-org/GLM-5.2 while the table said
+  // zhipuai/glm-5.2. Import with SELF_TEST cleared so genome.js does not run its own
+  // suite here and report a genome failure as a seller failure.
+  const savedST = process.env.SELF_TEST;
+  delete process.env.SELF_TEST;
+  const { MODEL_POOL } = await import('../evolution/genome.js');
+  if (savedST !== undefined) process.env.SELF_TEST = savedST;
+  // Assert on what priceFor() actually RESOLVES, not on key existence. A key can be
+  // present with a falsy or unusable value ({}, null, non-numeric), and `models[key] ||
+  // models.default` still falls through to the default, so a key-presence check would
+  // pass while the invariant this guard documents is broken.
+  const rows = loadPriceTable().models || {};
+  const bad = [];
+  for (const m of MODEL_POOL) {
+    const row = priceFor(m);
+    if (rows.default && row === rows.default) { bad.push(`${m} (resolved to the default row)`); continue; }
+    if (!Number.isFinite(row?.input) || !Number.isFinite(row?.output)) { bad.push(`${m} (row has non-numeric input/output)`); continue; }
+    if (row.input < 0 || row.output < 0) bad.push(`${m} (negative price)`);
+  }
+  if (bad.length) {
+    console.error('[seller self-test] PRICE COVERAGE FAIL: MODEL_POOL ids that do not resolve to a usable explicit price row, so they silently bill at the default:', bad.join('; '));
+    process.exit(1);
+  }
+  console.log(`[seller self-test] price coverage OK (${MODEL_POOL.length} MODEL_POOL ids resolve to explicit usable rows, 0 falling through to default)`);
   const savedP = process.env.PIONEER_API_KEY;
   const savedG = process.env.GEMINI_API_KEY;
   delete process.env.PIONEER_API_KEY;
