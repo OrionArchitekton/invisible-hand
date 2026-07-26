@@ -103,14 +103,21 @@ parents, generation, price, model route, prompt variant, niche.
   (price band, mutation delta, niche allowlist, spend cap, parent solvency)
   before receiving a wallet and a stake.
 
-The falsifiable thesis: a population selected by real settlement improves its
-economics across generations. Evidence so far, raw and unsmoothed, on the
-dashboard's Evolution panel: generation 1 variants average several times the
-profit-per-100 of generation 0 in the live run. Stated with equal honesty:
-generation 1's verified accuracy DECLINED while its economics improved, which
-is reward hacking; early children optimized the declared fitness function, not
-usefulness. That finding is itself the result: the market surfaced its own
-fitness-design failure, and accuracy-aware selection pressure is the next
+The falsifiable thesis was that a population selected by real settlement
+improves its economics across generations. The run appeared to support it, and
+the post-release errata in [docs/run-evidence.md](docs/run-evidence.md)
+retracted that reading: the generation-over-generation gain substantially
+measures which hand-seeded price band survived, it was computed on a fallback
+price because four of six model ids were mispriced, and the paired accuracy
+decline is confounded by a model change and is not sized by this sample. The
+original framing called that reward hacking. That overstates it.
+
+What the run does support is structural, and it is the more useful claim.
+Fitness is cumulative net P&L, with no accuracy term in the objective and no
+accuracy floor gating promotion or breeding, so selection could only ever see
+profit. A verified failure moves an in-memory buyer demand weight and never
+reaches the ledger. An objective that was never given a quality term did
+exactly what it was told, which is why accuracy-aware selection is the next
 gate this system is built to apply. Self-play demand is disclosed; the
 selection mechanism (pay, verify, decay, displace) does not depend on who the
 buyers are, which is why it should generalize to exogenous demand.

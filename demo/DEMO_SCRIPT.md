@@ -1,5 +1,14 @@
 # Invisible Hand: 3-minute submission video script
 
+> **HISTORICAL RECORD, PARTLY SUPERSEDED.** This is the narration as spoken in the
+> published video (youtu.be/XA3-3MLTkAM), preserved verbatim so the script matches the
+> audio. The 2026-07-25 errata in `docs/run-evidence.md` retracts the SHOT results
+> narration: the generation-over-generation gain largely measures which hand-seeded price
+> band survived and was computed on a fallback price for four of six model ids, the paired
+> accuracy decline is confounded and unsized, and "reward hacking" overstates it. The
+> video's audio cannot be edited after publication; the correction lives in the errata, the
+> project page, and the video description. Do NOT reuse the retracted lines in new material.
+
 Every narration line passes the honesty bar: testnet called testnet, self-play
 disclosed, the stress test labeled operator-triggered, Guild called local mode.
 

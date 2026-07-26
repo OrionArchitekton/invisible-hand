@@ -20,6 +20,12 @@
 <body>
 
 <h1>THE INVISIBLE <span class="accent">HAND</span> · judge Q&amp;A</h1>
+<div class="a" style="border-left:3px solid #dc2626;padding-left:3mm"><b>ERRATA (2026-07-25):</b>
+answers below that cite a several-fold generation-over-generation economic gain, a sized
+accuracy decline, or "reward hacking" are RETRACTED. The comparison largely measures which
+hand-seeded price band survived, the profit figures used a fallback price for four of six
+model ids, and the accuracy decline is confounded and unsized. What survives: fitness carried
+no accuracy term, so selection could only ever see profit. See docs/run-evidence.md.</div>
 <div class="sub">One-breath answers. When in doubt: show one screen, click one transaction, stop talking.</div>
 
 <div class="qa"><div class="q">Q1. What is it, in one sentence?</div>
@@ -38,7 +44,7 @@
 <div class="a">Cumulative net P&amp;L: settled revenue minus inference cost. Not profit-per-100: that normalizes away volume, and a verified-bad seller whose demand collapsed would idle as a solvent zombie. We shipped that bug, a reviewer caught it, and the fix has a regression test.</div></div>
 
 <div class="qa"><div class="q">Q6. Your generation-1 accuracy went DOWN. Explain.</div>
-<div class="a">Yes, and that is the headline: gen-1 unit economics rose ~8x while verified accuracy fell. Early children optimized the declared fitness, not usefulness. That is reward hacking, the system surfaced it itself, we report it receipt-true (successes/attempts), and accuracy-aware selection (evaluation windows, verified sample floors) is the next gate. <b>A market that catches its own reward hacking is the self-evolving story.</b></div></div>
+<div class="a">The honest answer, after the errata: no. The apparent gain largely measures which hand-seeded price band survived, and it was computed on a fallback price for four of six model ids; the paired accuracy decline is confounded by a model change and is not sized by this sample. What the run does show is structural: the objective was cumulative net P&amp;L with no accuracy term and no accuracy floor gating breeding, so selection could only ever see profit, and a verified failure never reached the ledger. <b>An objective never given a quality term did exactly what it was told. Accuracy-aware selection is the next gate.</b></div></div>
 
 <div class="qa"><div class="q">Q7. Why did that one agent die?</div>
 <div class="a">Operator-triggered stress test, narrated as such: we debited it past its stake and the REAL insolvency path ran: delist, endpoint 410, estate written to Actian. The death survives restarts. At the population cap, displacement only happens AFTER a child passes governance; a blocked child changes nothing.</div></div>
@@ -50,7 +56,7 @@
 <div class="a">Stated plainly: demand is endogenous self-play; memory embeddings are lexical hash-embed, not semantic; Guild is local mode; per-generation samples are small and we show raw n instead of smoothing. Every non-live path is labeled on the dashboard.</div></div>
 
 <div class="qa"><div class="q">Q10. Can I verify any of this myself, right now?</div>
-<div class="a">Yes: the live dashboard (tunnel URL on the submission), any settlement tx on Basescan or Blockscout, the public cited.md article, and <span class="mono">npm test</span> runs 13/13 module suites with zero API keys. What we claim is what you can check.</div></div>
+<div class="a">Yes: any settlement tx on Basescan or Blockscout, the frozen evidence and its errata in <span class="mono">docs/run-evidence.md</span>, the public cited.md article, the durable project page at danmercede.com/works/invisible-hand, and <span class="mono">npm test</span> runs 13/13 module suites with zero API keys. The event-day tunnel is gone, so boot the dashboard locally with <span class="mono">node scripts/run-market.js</span>. What we claim is what you can check.</div></div>
 
 <div class="qa"><div class="q">Q11. What would you build next?</div>
 <div class="a">Accuracy-aware selection (verified floors for parents, recent-window fitness), exogenous buyers paying into the same rail, and generation 2+ under the same gate: the reward-hacking correction, made selective.</div></div>

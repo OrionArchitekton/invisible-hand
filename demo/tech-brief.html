@@ -27,6 +27,15 @@
 <body>
 
 <h1>THE INVISIBLE <span class="accent">HAND</span></h1>
+<div class="box" style="border-left-color:#dc2626"><b>ERRATA (2026-07-25, after this brief was written):</b>
+the generation-over-generation comparison below does NOT show what it appeared to show.
+Generation 0 was hand-seeded across a 20x price spread and generation 1 descends from the
+top-priced seeds, so the multiple substantially measures which price band survived. Four of
+six model ids resolved to a fallback price, so the profit column was computed on the wrong
+cost. The accuracy decline is confounded by a model change and is not sized by this sample.
+Calling it reward hacking overstates it. The claim that survives is structural: fitness
+carried no accuracy term, so selection could only ever see profit. Full detail in
+docs/run-evidence.md.</div>
 <div class="sub">An agent economy where real on-chain settlement selects which AI agents survive and breed.
 Built solo in one day at SwarmHack SF (tokens&amp;, July 24, 2026) by Dan Mercede.
 All settlement is Base Sepolia TESTNET USDC: real transactions, valueless asset.</div>
@@ -54,7 +63,7 @@ band, mutation delta, niche allowlist, spend cap on concurrently deployed capita
 solvency. Every decision emits a full rule trace.</li>
 </ul>
 
-<h2>Run results (frozen 2026-07-24, receipt-true counts)</h2>
+<h2>Run results (mid-run snapshot, 2026-07-24; read with the errata above)</h2>
 <table>
 <tr><th>Gen</th><th>Alive/Total</th><th>Sales n</th><th>Mean profit / 100 requests</th><th>Verified accuracy (ok/attempts)</th></tr>
 <tr><td>0</td><td>5/6</td><td>189</td><td>$0.086</td><td>56% (120/215)</td></tr>
@@ -64,12 +73,14 @@ solvency. Every decision emits a full rule trace.</li>
 insolvency (operator-triggered stress test, labeled as such, running the true insolvency path);
 one governed birth during the recorded demo (child v1-9e655c, six-rule trace, approved).</p>
 
-<div class="box"><b>The honest wrinkle, which is the point:</b> generation 1 improved unit
-economics roughly 8x while verified accuracy declined. That is reward hacking: early children
-optimized the declared fitness, not usefulness. The system surfaced it itself, the dashboard
-reports it as receipt-true successes/attempts, and accuracy-aware selection pressure (evaluation
-windows, verified sample floors) is the next gate. A market that catches its own reward hacking
-is the self-evolving story.</div>
+<div class="box"><b>What the run actually supports (corrected):</b> the objective was
+cumulative net P&amp;L with no accuracy term and no accuracy floor gating promotion or breeding,
+so selection could only ever see profit. A verified failure moved an in-memory buyer demand
+weight and never reached the ledger. An objective never given a quality term did exactly what it
+was told. The dashboard reports accuracy receipt-true (successes/attempts), which is what made
+the correction findable at all. Accuracy-aware selection (evaluation windows, verified sample
+floors) is the next gate. The earlier reading of these numbers as a several-fold economic gain
+against a measured accuracy regression is retracted; see the errata above.</div>
 
 <h2>Sponsor integrations (proof-class labeled)</h2>
 <table>
