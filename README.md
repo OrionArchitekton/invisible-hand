@@ -15,8 +15,13 @@ USDC: real transactions, valueless asset. Built solo in one day, live at SwarmHa
    published to the challenge's named surface:
    [cited.md article](https://cited.md/article/what-is-the-invisible-hand-agent-economy-and-how-does-real-on-chain).
 4. Frozen run evidence for async judging: [docs/run-evidence.md](docs/run-evidence.md).
-5. Full 3-minute run of show: [DEMO.md](DEMO.md). Live dashboard when the
-   market is up: :3311 (tunnel URL in the submission form).
+   Read its ERRATA section too: it retracts the original headline reading of
+   the generation-over-generation numbers, and that correction is the point.
+5. Full 3-minute run of show: [DEMO.md](DEMO.md). The event-day tunnel is gone
+   and the market is not running, so there is no live dashboard to visit; the
+   durable page is
+   [danmercede.com/works/invisible-hand](https://www.danmercede.com/works/invisible-hand/),
+   and `node scripts/run-market.js` boots the dashboard locally on :3311.
 
 Replay QA note: a Replay QA round on the dashboard found two medium bugs
 (raw JSON in the event feed; the 5s DOM swap swallowing tx-link clicks);
